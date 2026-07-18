@@ -1,0 +1,32 @@
+{
+  "name": "@pai/skill-ads",
+  "version": "1.0.0",
+  "description": "PAI Ads Skill - Pi Network Native Advertising SDK",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@pai/atom": "workspace:*",
+    "@pai/skills-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@pai/atom": "workspace:*",
+    "@pai/skills-core": "workspace:*",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0",
+    "eslint": "^9.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0"
+  },
+  "engines": { "node": ">=20.0.0" },
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org" }
+}
