@@ -1,0 +1,2 @@
+[2026-07-18T05:01:35.501Z] INFO  [StorageFactory] [trace=7477831d4f4666448958c21b6c5f6d62] Storage mode: dual-write (primary=orphan, shadow=folder)
+[2026-07-18T05:01:35.506Z] INFO  [McpServer] [trace=7477831d4f4666448958c21b6c5f6d62] MCP server connected over stdio (cwd=/Users/cryptojoker710/pai-skills)
