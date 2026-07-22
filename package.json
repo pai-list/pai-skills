@@ -1,0 +1,14 @@
+{
+  "name": "@pai/skills-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PAI Agent Capability Marketplace & Skills Registry",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test"
+  },
+  "license": "MIT"
+}
