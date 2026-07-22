@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "registry": [
+    { "name": "pai-verify", "version": "1.0.0", "category": "identity", "endpoint": "https://axiomid.app/api/v1/verify" },
+    { "name": "pai-trust", "version": "1.0.0", "category": "identity", "endpoint": "https://axiomid.app/api/v1/trust" },
+    { "name": "pai-pay", "version": "1.0.0", "category": "payments", "endpoint": "https://mcp.pai.build/mcp" },
+    { "name": "pai-supermemory", "version": "1.0.0", "category": "memory", "endpoint": "https://agent.pai.build/memory" }
+  ]
+}
