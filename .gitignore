@@ -5,3 +5,4 @@ dist/
 .jolli/
 .env
 .env.local
+.jolli/

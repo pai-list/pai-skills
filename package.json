@@ -1,0 +1,37 @@
+{
+  "name": "pai-skills",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PAI Skills Registry - The npm for AI agents on Pi Network",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "publish:all": "turbo run publish",
+    "dev:cli": "turbo run dev --filter=@pai/skills-cli",
+    "dev:server": "turbo run dev --filter=@pai/skills-server",
+    "docs:dev": "turbo run dev --filter=@pai/skills-docs",
+    "docs:build": "turbo run build --filter=@pai/skills-docs"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0",
+    "eslint": "^9.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "prettier": "^3.2.0",
+    "prettier-plugin-tailwindcss": "^0.5.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-import": "^2.29.0",
+    "eslint-plugin-jsx-a11y": "^6.8.0",
+    "eslint-plugin-react": "^7.34.0",
+    "eslint-plugin-react-hooks": "^4.6.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "pnpm@9.0.0"
+}
