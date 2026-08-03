@@ -1,7 +1,7 @@
 {
   "name": "@pai/skills-core",
   "version": "1.0.0",
-  "description": "PAI Skills Core - Registry, Loader, Validator, Types",
+  "description": "PAI Skills Core - Registry, Loader, Validator, Types, Learner",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -22,6 +22,10 @@
     "./validator": {
       "types": "./dist/validator.d.ts",
       "import": "./dist/validator.js"
+    },
+    "./learner": {
+      "types": "./dist/learner.d.ts",
+      "import": "./dist/learner.js"
     }
   },
   "scripts": {
@@ -34,11 +38,15 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@pai/crypto": "^0.1.0",
+    "@pai/sdk": "^0.1.0",
+    "@pai/identity": "^0.1.0",
+    "@pai/verify": "^0.1.0",
+    "@pai/wallet": "^0.1.0",
     "fast-check": "^3.15.0",
     "zod": "^3.22.0"
   },
   "devDependencies": {
-    "@pai/atom": "file:../../../pai-atom/pai-atom-1.0.0-immutable.tgz",
     "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
