@@ -8,7 +8,7 @@ export const listCommand = new Command('list')
   .option('-v, --verified', 'Show only verified skills')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
-    const registry = new (await import('@pai/skills-core')).SkillRegistry();
+    const registry = new SkillRegistry();
     
     const results = registry.search('', {
       category: options.category,

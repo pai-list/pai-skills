@@ -6,6 +6,10 @@ export class SkillRegistry {
   private loader = new SkillLoader();
   private listeners = new Map<string, Array<(...args: any[]) => void>>();
 
+  protected getSkills(): Map<string, any> {
+    return this.skills;
+  }
+
   private emit(event: string, ...args: any[]) {
     const handlers = this.listeners.get(event);
     if (handlers) handlers.forEach(h => h(...args));
@@ -29,7 +33,7 @@ export class SkillRegistry {
   }
 
   list(): any[] {
-    return Array.from(this.skills.values());
+    return Array.from(this.getSkills().values());
   }
 
   search(query: string, options: {
@@ -42,7 +46,7 @@ export class SkillRegistry {
     const { category, tag, verified, page = 1, pageSize = 20 } = options;
     const q = query.toLowerCase();
 
-    let results = Array.from(this.skills.values()).filter(skill => {
+    let results = Array.from(this.getSkills().values()).filter(skill => {
       if (query && !skill.name.toLowerCase().includes(q) &&
           !skill.description.toLowerCase().includes(q)) {
         return false;
@@ -65,7 +69,7 @@ export class SkillRegistry {
   }
 
   stats() {
-    const skills = Array.from(this.skills.values());
+    const skills = Array.from(this.getSkills().values());
     return {
       totalSkills: skills.length,
       totalDownloads: skills.reduce((sum, s) => sum + (s.downloads || 0), 0),

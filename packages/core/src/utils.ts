@@ -1,5 +1,7 @@
+import { getSetTimeout } from './runtime/node-adapters.js';
+
 export function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise(resolve => getSetTimeout(resolve, ms));
 }
 
 export function createId(): string {

@@ -1,8 +1,8 @@
 node_modules/
 dist/
 .next/
+.turbo/
 *.tgz
 .jolli/
 .env
 .env.local
-.jolli/
