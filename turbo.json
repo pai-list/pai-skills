@@ -1,5 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -28,7 +29,5 @@
       "outputs": [],
       "cache": false
     }
-  },
-  "globalDependencies": [".env*"],
-  "globalEnv": ["NODE_ENV", "REGISTRY_API_URL", "REDIS_URL", "JWT_SECRET", "DATABASE_URL"]
+  }
 }
