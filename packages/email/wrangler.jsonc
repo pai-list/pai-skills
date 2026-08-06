@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pai-email-worker",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-06",
+  "routes": [
+    {
+      "pattern": "mail.axiomid.app/*",
+      "zone_name": "axiomid.app"
+    }
+  ]
+}
