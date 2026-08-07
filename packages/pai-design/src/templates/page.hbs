@@ -1,0 +1,27 @@
+{{#if isClient}}"use client"{{/if}}
+
+import { {{componentName}}Hero } from './components/{{endpoint.toUpperCase}}Hero';
+import { {{endpoint.toUpperCase}}Stats } from './components/{{endpoint.toUpperCase}}Stats';
+import { {{endpoint.toUpperCase}}Features } from './components/{{endpoint.toUpperCase}}Features';
+import { {{endpoint.toUpperCase}}Cta } from './components/{{endpoint.toUpperCase}}Cta';
+import { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: '{{i18n.en.hero_title}} | PAI',
+  description: '{{i18n.en.hero_subtitle}}',
+  openGraph: {
+    title: '{{i18n.en.hero_title}}',
+    description: '{{i18n.en.hero_subtitle}}',
+  },
+};
+
+export default function {{componentName}}() {
+  return (
+    <main className="min-h-screen bg-white dark:bg-neutral-950">
+      <{{endpoint.toUpperCase}}Hero />
+      <{{endpoint.toUpperCase}}Stats />
+      <{{endpoint.toUpperCase}}Features />
+      <{{endpoint.toUpperCase}}Cta />
+    </main>
+  );
+}

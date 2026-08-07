@@ -1,0 +1,36 @@
+{
+  "name": "pai-design",
+  "version": "0.1.0",
+  "description": "PAI Design Skill — Endpoint schema validator, code generator, designer harness, and TUI",
+  "type": "module",
+  "bin": {
+    "pai-design": "./bin/cli.mjs",
+    "pai-tui": "./bin/tui.mjs"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "dev": "tsx watch bin/cli.mjs",
+    "tui": "node bin/tui.mjs"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "chalk": "^5.4.1",
+    "commander": "^12.1.0",
+    "ink": "^4.4.1",
+    "ink-select-input": "^5.0.0",
+    "ink-text-input": "^5.0.0",
+    "ink-spinner": "^5.0.0",
+    "react": "^18.3.1",
+    "yaml": "^2.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "engines": { "node": ">=22.0.0" }
+}

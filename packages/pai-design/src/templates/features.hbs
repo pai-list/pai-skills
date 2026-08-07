@@ -1,0 +1,38 @@
+{{#if isClient}}"use client"{{/if}}
+
+import { useMagnetic } from '@/lib/physics/magnetic';
+import { useParallax } from '@/lib/physics/parallax';
+import { useStagger } from '@/lib/physics/stagger';
+import { useTranslations } from 'next-intl';
+
+const features = [
+  {{#each skills}}
+  { title: '{{this}}', description: 'Enterprise-grade {{this}} with zero-knowledge proofs.', icon: '🔐' },
+  {{/each}}
+];
+
+export function {{endpoint.toUpperCase}}Features() {
+  const t = useTranslations('{{endpoint}}');
+  const stagger = useStagger(0.08);
+  const { ref } = useMagnetic({ strength: 0.1 });
+  const { y } = useParallax({ speed: 0.3 });
+
+  return (
+    <section ref={ref} className="py-24" style={{ transform: `translateY(${y}px)` }}>
+      <div className="mx-auto max-w-5xl px-6">
+        <h2 className="text-3xl/1 font-medium tracking-tight text-center mb-12" style={{ opacity: stagger(0) }}>
+          {{#if t('features_title')}}{{t('features_title')}}{{else}}Capabilities{{/if}}
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {{#each features}}
+          <article className="group relative p-6 rounded-2xl bg-white/5 dark:bg-neutral-900/50 border border-white/10 dark:border-neutral-800 transition-all duration-300 hover:border-[#BDFF23]/50 hover:bg-white/10 dark:hover:bg-neutral-800/50" style={{ opacity: stagger(@index + 1) }}>
+            <div className="text-4xl mb-4">{{icon}}</div>
+            <h3 className="text-lg font-medium text-white mb-2">{{title}}</h3>
+            <p className="text-neutral-400">{{description}}</p>
+          </article>
+          {{/each}}
+        </div>
+      </div>
+    </section>
+  );
+}

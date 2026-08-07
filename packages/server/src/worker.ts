@@ -4,7 +4,7 @@
 const SERVER_NAME = "pi-skills-registry";
 const VERSION = "1.0.0";
 
-const PI_SKILLS = [
+const PI_NETWORK_SKILLS = [
   {
     id: "pi-wallet-autonomy",
     name: "pi_wallet_pay",
@@ -60,6 +60,53 @@ const job = await PAIEarnMarketplace.createJob({
     mcpMethod: "tools/call:pi_labor_bounty",
   },
 ];
+
+const AI_AGENTIC_SKILLS = [
+  {
+    id: "agent-frontend-dev",
+    name: "agent_frontend_dev",
+    category: "Engineering — Frontend",
+    description: "React/Vue/Angular, UI implementation, performance — modern web apps, pixel-perfect UIs, Core Web Vitals optimization.",
+    mcpMethod: "tools/call:agent_frontend_dev",
+  },
+  {
+    id: "agent-backend-architect",
+    name: "agent_backend_architect",
+    category: "Engineering — Backend",
+    description: "API design, database architecture, scalability — server-side systems, microservices, cloud infrastructure.",
+    mcpMethod: "tools/call:agent_backend_architect",
+  },
+  {
+    id: "agent-security-auditor",
+    name: "agent_security_auditor",
+    category: "Security",
+    description: "Vulnerability assessment, code review, penetration testing — securing AI agents and infrastructure.",
+    mcpMethod: "tools/call:agent_security_auditor",
+  },
+  {
+    id: "agent-qa-engineer",
+    name: "agent_qa_engineer",
+    category: "Testing",
+    description: "Automated testing, visual regression, API validation — breaking things so users don't have to.",
+    mcpMethod: "tools/call:agent_qa_engineer",
+  },
+  {
+    id: "agent-growth-hacker",
+    name: "agent_growth_hacker",
+    category: "Marketing",
+    description: "Rapid user acquisition, viral loops, experiments — explosive growth, user acquisition, conversion optimization.",
+    mcpMethod: "tools/call:agent_growth_hacker",
+  },
+  {
+    id: "agent-sales-outbound",
+    name: "agent_sales_outbound",
+    category: "Sales",
+    description: "Signal-based prospecting, multi-channel sequences, ICP targeting — building pipeline through research-driven outreach.",
+    mcpMethod: "tools/call:agent_sales_outbound",
+  },
+];
+
+const ALL_SKILLS = [...PI_NETWORK_SKILLS, ...AI_AGENTIC_SKILLS];
 
 const MCP_SERVER_CONFIG = `{
   "mcpServers": {
@@ -350,8 +397,13 @@ const PAGE_HTML = `<!doctype html>
   </section>
 
   <section>
-    <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 1.25rem;" id="skills-heading">⚡ Core Agentic Skills (4)</h2>
-    <div class="skills-grid" id="skills-container"></div>
+    <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 1.25rem;" id="pi-skills-heading">⚡ Pi Network Skills (4)</h2>
+    <div class="skills-grid" id="pi-skills-container"></div>
+  </section>
+
+  <section>
+    <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 1.25rem; margin-top: 2.5rem;" id="ai-skills-heading">🤖 AI Agentic Skills (6)</h2>
+    <div class="skills-grid" id="ai-skills-container"></div>
   </section>
 
   <section class="mcp-box">
@@ -369,14 +421,16 @@ const PAGE_HTML = `<!doctype html>
 </footer>
 
 <script>
-const skills = ${JSON.stringify(PI_SKILLS)};
+const piNetworkSkills = ${JSON.stringify(PI_NETWORK_SKILLS)};
+const aiAgenticSkills = ${JSON.stringify(AI_AGENTIC_SKILLS)};
 let currentLang = 'en';
 
 const i18n = {
   en: {
     heroTitle: "Pi Network Agentic Skills Registry",
     heroDesc: "The official open standard library for Pi Network AI agents. Equipped with native Pi payment autonomies, server-side KYC verification, mem7 7-layer memory, and a dedicated MCP Server.",
-    skillsHeading: "⚡ Core Agentic Skills (4)",
+    piSkillsHeading: "⚡ Pi Network Skills (4)",
+    aiSkillsHeading: "🤖 AI Agentic Skills (6)",
     mcpTitle: "🔌 Pi Network MCP Server Endpoint",
     mcpDesc: "Connect your agent framework directly to the Pi Network MCP Server via https://skills.axiomid.app/mcp.",
     copyBtn: "📋 COPY PI MCP CONFIG",
@@ -386,7 +440,8 @@ const i18n = {
   ar: {
     heroTitle: "مكتبة مهارات الذكاء الاصطناعي لشبكة Pi Network",
     heroDesc: "المعيار القياسي المفتوح لمهارات وكلاء الذكاء الاصطناعي على شبكة Pi Network. مزودة بدفع الاستقلالية المالي، والتوثيق الخادمي للـ KYC، وذاكرة mem7، وسيرفر MCP مخصص.",
-    skillsHeading: "⚡ مهارات الوكلاء القياسية (4)",
+    piSkillsHeading: "⚡ مهارات شبكة Pi (4)",
+    aiSkillsHeading: "🤖 مهارات الوكلاء الذكية (6)",
     mcpTitle: "🔌 سيرفر Pi Network MCP المباشر",
     mcpDesc: "اربط هيكلية عمل وكيلك مباشرة بسيرفر MCP عبر https://skills.axiomid.app/mcp.",
     copyBtn: "📋 نسخ إعدادات Pi MCP",
@@ -396,15 +451,27 @@ const i18n = {
 };
 
 function renderSkills() {
-  const container = document.getElementById('skills-container');
-  container.innerHTML = skills.map(s => \`
+  const piContainer = document.getElementById('pi-skills-container');
+  const aiContainer = document.getElementById('ai-skills-container');
+  
+  piContainer.innerHTML = piNetworkSkills.map(s => \`
     <div class="skill-card">
       <div class="skill-header">
         <span class="skill-name">\${s.name}</span>
         <span class="skill-category">\${s.category}</span>
       </div>
       <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5;">\${s.description}</p>
-      <div class="code-box">\${s.codeSnippet}</div>
+      \${s.codeSnippet ? \`<div class="code-box">\${s.codeSnippet}</div>\` : ''}
+    </div>
+  \`).join('');
+  
+  aiContainer.innerHTML = aiAgenticSkills.map(s => \`
+    <div class="skill-card">
+      <div class="skill-header">
+        <span class="skill-name">\${s.name}</span>
+        <span class="skill-category">\${s.category}</span>
+      </div>
+      <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5;">\${s.description}</p>
     </div>
   \`).join('');
 }

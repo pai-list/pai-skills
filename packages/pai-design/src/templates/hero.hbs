@@ -1,0 +1,41 @@
+{{#if isClient}}"use client"{{/if}}
+
+import { useMagnetic } from '@/lib/physics/magnetic';
+import { useStagger } from '@/lib/physics/stagger';
+import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+
+export function {{endpoint.toUpperCase}}Hero() {
+  const t = useTranslations('{{endpoint}}');
+  const { ref, x, y } = useMagnetic({ strength: 0.15 });
+  const stagger = useStagger(0.08);
+
+  return (
+    <section
+      ref={ref}
+      className="relative min-h-[80vh] flex items-center justify-center overflow-hidden"
+      style={{ background: 'linear-gradient(135deg, {{color}}15, transparent)' }}
+    >
+      <div className="mx-auto max-w-5xl px-6 text-center" style={{ transform: `translate(${x}px, ${y}px)` }}>
+        <div className="font-mono text-[0.6875rem] font-medium tracking-[0.12em] text-[#BDFF23] uppercase mb-4" style={{ opacity: stagger(0) }}>
+          {{layer}} · {{name}}
+        </div>
+        <h1 className="mt-4 text-5xl/1 font-medium tracking-tight text-pretty text-white [font-variation-settings:'opsz'_48]" style={{ opacity: stagger(1) }}>
+          <span className="text-neutral-950 dark:text-white">{{t('hero_title')}}</span>
+        </h1>
+        <p className="mt-6 text-xl/8 text-neutral-500 dark:text-neutral-400 max-w-2xl mx-auto" style={{ opacity: stagger(2) }}>
+          {{t('hero_subtitle')}}
+        </p>
+        <div className="mt-10 flex items-center justify-center gap-4" style={{ opacity: stagger(3) }}>
+          <Link
+            href="{{routes[0].path}}"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-black px-8 text-base/7 font-medium text-white shadow-lg select-none hover:bg-neutral-800 dark:bg-linear-to-b dark:from-[oklch(0.93_0.26_110)] dark:to-[oklch(0.90_0.29_132)] dark:text-black dark:shadow-none dark:hover:bg-neutral-500"
+          >
+            {{t('cta_text') || 'Get started'}}
+            <svg className="size-4 stroke-current" fill="none" viewBox="0 0 16 16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.25 2.75v7.5m0-7.5h-7.5m7.5 0-10.5 10.5" /></svg>
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}

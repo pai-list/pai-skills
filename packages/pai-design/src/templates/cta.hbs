@@ -1,0 +1,38 @@
+{{#if isClient}}"use client"{{/if}}
+
+import { useStagger } from '@/lib/physics/stagger';
+import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+
+export function {{endpoint.toUpperCase}}Cta() {
+  const t = useTranslations('{{endpoint}}');
+  const stagger = useStagger(0.1);
+
+  return (
+    <section className="py-24 bg-gradient-to-b from-transparent via-{{color}}/10 to-transparent">
+      <div className="mx-auto max-w-2xl px-6 text-center" style={{ opacity: stagger(0) }}>
+        <h2 className="text-3xl/1 font-medium tracking-tight text-white mb-4">
+          Ready to build with {{name}}?
+        </h2>
+        <p className="text-neutral-400 mb-8">
+          {{t('hero_subtitle')}}
+        </p>
+        <div className="flex items-center justify-center gap-4">
+          <Link
+            href="{{routes[0].path}}"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-black px-8 text-base/7 font-medium text-white shadow-lg select-none hover:bg-neutral-800 dark:bg-linear-to-b dark:from-[oklch(0.93_0.26_110)] dark:to-[oklch(0.90_0.29_132)] dark:text-black dark:shadow-none dark:hover:bg-neutral-500"
+          >
+            {{t('cta_text') || 'Start building'}}
+            <svg className="size-4 stroke-current" fill="none" viewBox="0 0 16 16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.25 2.75v7.5m0-7.5h-7.5m7.5 0-10.5 10.5" /></svg>
+          </Link>
+          <Link
+            href="/docs"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/20 px-8 text-base/7 font-medium text-white hover:bg-white/5 transition-colors"
+          >
+            Read docs
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
