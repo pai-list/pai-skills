@@ -4,6 +4,30 @@
 const SERVER_NAME = "pi-skills-registry";
 const VERSION = "1.0.0";
 
+/** Security headers for iframe embedding from axiomid.app */
+const SECURITY_HEADERS: Record<string, string> = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "ALLOW-FROM https://axiomid.app",
+  "Content-Security-Policy": "frame-ancestors https://axiomid.app",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+};
+
+function html(body: string, status = 200): Response {
+  return new Response(body, {
+    status,
+    headers: { "Content-Type": "text/html; charset=utf-8", ...SECURITY_HEADERS },
+  });
+}
+
+function json(value: unknown, status = 200): Response {
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...SECURITY_HEADERS },
+  });
+}
+
 const PI_NETWORK_SKILLS = [
   {
     id: "pi-wallet-autonomy",
@@ -447,6 +471,28 @@ const i18n = {
     copyBtn: "📋 نسخ إعدادات Pi MCP",
     copied: "تم النسخ بنجاح ✓",
     footerText: "skills.axiomid.app · معيار PAI Universe للذكاء الاصطناعي · بنيت بإحسان"
+  },
+  zh: {
+    heroTitle: "Pi Network 代理技能注册表",
+    heroDesc: "Pi Network AI 代理的官方开放标准库。配备原生 Pi 支付自主权、服务端 KYC 验证、mem7 七层记忆和专用 MCP 服务器。",
+    piSkillsHeading: "⚡ Pi 网络技能 (4)",
+    aiSkillsHeading: "🤖 AI 代理技能 (6)",
+    mcpTitle: "🔌 Pi 网络 MCP 服务器端点",
+    mcpDesc: "通过 https://skills.axiomid.app/mcp 将您的代理框架直接连接到 Pi 网络 MCP 服务器。",
+    copyBtn: "📋 复制 PI MCP 配置",
+    copied: "已复制 ✓",
+    footerText: "skills.axiomid.app · PAI Universe Pi 代理标准 · 以 Ihsan 构建"
+  },
+  hi: {
+    heroTitle: "Pi नेटवर्क एजेंट स्किल्स रजिस्ट्री",
+    heroDesc: "Pi नेटवर्क AI एजेंटों के लिए आधिकारिक ओपन स्टैंडर्ड लाइब्रेरी। नेटिव Pi भुगतान स्वायत्त्त, सर्वर-साइड KYC सत्यापन, mem7 7-लेयर मेमोरी और एक समर्पित MCP सर्वर के साथ।",
+    piSkillsHeading: "⚡ Pi नेटवर्क स्किल्स (4)",
+    aiSkillsHeading: "🤖 AI एजेंटिक स्किल्स (6)",
+    mcpTitle: "🔌 Pi नेटवर्क MCP सर्वर एंडपॉइंट",
+    mcpDesc: "https://skills.axiomid.app/mcp के माध्यम से अपने एजेंट फ्रेमवर्क को सीधे Pi नेटवर्क MCP सर्वर से जोड़ें।",
+    copyBtn: "📋 PI MCP कॉन्फिग कॉपी करें",
+    copied: "कॉपी हो गया ✓",
+    footerText: "skills.axiomid.app · PAI यूनिवर्स Pi एजेंटिक स्टैंडर्ड · Ihsan के साथ निर्मित"
   }
 };
 
@@ -486,9 +532,12 @@ function copyMcpConfig() {
 }
 
 function toggleLanguage() {
-  currentLang = currentLang === 'en' ? 'ar' : 'en';
+  const order: Record<string, string> = { en: 'ar', ar: 'zh', zh: 'hi', hi: 'en' };
+  currentLang = order[currentLang] ?? 'en';
   document.documentElement.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
-  document.getElementById('lang-toggle').textContent = currentLang === 'en' ? 'AR / العربية' : 'EN / English';
+  const label: Record<string, string> = { en: 'العربية AR', ar: '中文 ZH', zh: 'हिंदी HI', hi: 'EN English' };
+  const toggle = document.getElementById('lang-toggle');
+  if (toggle) toggle.textContent = label[currentLang];
   const t = i18n[currentLang];
   document.getElementById('hero-title').textContent = t.heroTitle;
   document.getElementById('hero-desc').textContent = t.heroDesc;
@@ -516,9 +565,7 @@ export default {
       });
     }
     if (url.pathname === "/" || url.pathname === "/console") {
-      return new Response(PAGE_HTML, {
-        headers: { "Content-Type": "text/html; charset=utf-8" },
-      });
+      return html(PAGE_HTML);
     }
     if (url.pathname === "/mcp" || request.method === "POST") {
       const body = await request.json().catch(() => null);
@@ -535,12 +582,6 @@ export default {
         result: { status: "success", server: "pi-skills-mcp", version: VERSION },
       });
     }
-    return new Response("not found", { status: 404 });
+    return new Response("not found", { status: 404, headers: SECURITY_HEADERS });
   },
 };
-
-function json(value: unknown): Response {
-  return new Response(JSON.stringify(value), {
-    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-  });
-}

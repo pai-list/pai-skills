@@ -15,7 +15,7 @@ All agents operating in this repository must adhere to the SOUL Protocol. See th
 ## Code Standards
 - TypeScript `strict: true` — No `as any` without justification
 - Tests required for trust boundaries, payments, crypto, identity
-- Tri-lingual support: EN/AR/ZH
+- Quad-lingual support: EN/AR/ZH/HI
 - Zero Raw Keys Policy: Use scoped AIP tokens
 - Commit format: IQRA Storytelling Chronicle Standard
 
