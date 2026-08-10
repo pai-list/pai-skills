@@ -8,5 +8,11 @@
       "pattern": "skills.axiomid.app/*",
       "zone_name": "axiomid.app"
     }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "MEMORY",
+      "id": "c525aab388054c57ba586bfcc907a795"
+    }
   ]
 }

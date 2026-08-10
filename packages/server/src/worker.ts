@@ -4,6 +4,10 @@
 const SERVER_NAME = "pi-skills-registry";
 const VERSION = "1.0.0";
 
+interface Env {
+  MEMORY?: KVNamespace;
+}
+
 /** Security headers for iframe embedding from axiomid.app */
 const SECURITY_HEADERS: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",
@@ -151,6 +155,75 @@ function escapeHtml(text: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function renderLlmsTxt(): string {
+  const tools = ALL_SKILLS.map((s) => `- ${s.name}: ${s.description} (MCP: ${s.mcpMethod || "registry only"})`).join("\n");
+  return `# skills.axiomid.app — LLM-friendly surface
+
+Standard library of agentic skills for the Pi Network (PAI Universe). Agents
+and humans can consume this registry directly over HTTP or via MCP.
+
+## Endpoints
+- GET /console             — interactive registry console (EN/AR/ZH/HI)
+- GET /health              — { status, version, server }
+- POST /mcp                — JSON-RPC 2.0: tools/list, tools/call (pi_agent_memory)
+- GET /llms.txt            — this file
+
+## MCP server config
+{
+  "mcpServers": {
+    "pi-skills-mcp": {
+      "command": "npx",
+      "args": ["-y", "@pai/skills-mcp@latest"],
+      "env": { "PI_SKILLS_ENDPOINT": "https://skills.axiomid.app/mcp" }
+    }
+  }
+}
+
+## Tools
+${tools}
+
+## Memory (pi_agent_memory)
+- store:   { action: "store", layer, key, value }
+- recall:  { action: "recall", layer, key }   (key optional → list layer)
+Persistence runs on Cloudflare KV when the MEMORY binding is provisioned.
+`;
+}
+
+async function handleMcpCall(requestBody: unknown, env: Env): Promise<unknown> {
+  const { name, arguments: args } = (requestBody as { name?: unknown; arguments?: unknown }) ?? {};
+  if (name !== "pi_agent_memory") {
+    return { jsonrpc: "2.0", id: null, error: { code: -32601, message: `Unknown tool: ${name}` } };
+  }
+  if (!env.MEMORY) {
+    return { jsonrpc: "2.0", id: null, error: { code: -32004, message: "MEMORY KV namespace not provisioned" } };
+  }
+  const a = (args ?? {}) as { action?: string; layer?: string; key?: string; value?: string };
+  const layer = a.layer || "general";
+  const prefix = `mem:${layer}:`;
+  try {
+    if (a.action === "store") {
+      if (!a.key || typeof a.value !== "string") {
+        return { jsonrpc: "2.0", id: null, error: { code: -32602, message: "store requires key (string) and value (string)" } };
+      }
+      await env.MEMORY.put(prefix + a.key, a.value);
+      return { jsonrpc: "2.0", id: null, result: { stored: `mem:${layer}:${a.key}` } };
+    }
+    if (a.action === "recall") {
+      if (a.key) {
+        const value = await env.MEMORY.get(prefix + a.key);
+        return { jsonrpc: "2.0", id: null, result: { key: `mem:${layer}:${a.key}`, value: value ?? null } };
+      }
+      const list = await env.MEMORY.list({ prefix });
+      const entries = list.keys.map((k) => k.name);
+      return { jsonrpc: "2.0", id: null, result: { keys: entries } };
+    }
+    return { jsonrpc: "2.0", id: null, error: { code: -32602, message: "action must be store or recall" } };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { jsonrpc: "2.0", id: null, error: { code: -32000, message: `KV error: ${message}` } };
+  }
 }
 
 const PAGE_HTML = `<!doctype html>
@@ -554,7 +627,7 @@ renderSkills();
 </html>`;
 
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/health") {
       return json({
@@ -562,6 +635,11 @@ export default {
         version: VERSION,
         status: "live",
         endpoint: "https://skills.axiomid.app",
+      });
+    }
+    if (url.pathname === "/llms.txt" || url.pathname === "/llm.txt") {
+      return new Response(renderLlmsTxt(), {
+        headers: { "Content-Type": "text/plain; charset=utf-8", ...SECURITY_HEADERS },
       });
     }
     if (url.pathname === "/" || url.pathname === "/console") {
@@ -573,8 +651,11 @@ export default {
         return json({
           jsonrpc: "2.0",
           id: body.id ?? null,
-          result: { tools: PI_SKILLS },
+          result: { tools: PI_NETWORK_SKILLS },
         });
+      }
+      if (body && body.method === "tools/call") {
+        return json(await handleMcpCall(body.params, env));
       }
       return json({
         jsonrpc: "2.0",
