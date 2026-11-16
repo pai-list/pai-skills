@@ -11,8 +11,7 @@ interface Env {
 /** Security headers for iframe embedding from axiomid.app */
 const SECURITY_HEADERS: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "ALLOW-FROM https://axiomid.app",
-  "Content-Security-Policy": "frame-ancestors https://axiomid.app",
+  "Content-Security-Policy": "frame-ancestors 'self' https://axiomid.app https://*.axiomid.app",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
