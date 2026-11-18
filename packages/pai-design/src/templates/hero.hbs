@@ -3,9 +3,10 @@
 import { useMagnetic } from '@/lib/physics/magnetic';
 import { useStagger } from '@/lib/physics/stagger';
 import Link from 'next/link';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 
 export function {{endpoint.toUpperCase}}Hero() {
+  const locale = useLocale();
   const t = useTranslations('{{endpoint}}');
   const { ref, x, y } = useMagnetic({ strength: 0.15 });
   const stagger = useStagger(0.08);
@@ -18,7 +19,7 @@ export function {{endpoint.toUpperCase}}Hero() {
     >
       <div className="mx-auto max-w-5xl px-6 text-center" style={{ transform: `translate(${x}px, ${y}px)` }}>
         <div className="font-mono text-[0.6875rem] font-medium tracking-[0.12em] text-[#BDFF23] uppercase mb-4" style={{ opacity: stagger(0) }}>
-          {{layer}} · {{name}}
+          { {{layerLiteral}} } · { {{nameLiteral}} }
         </div>
         <h1 className="mt-4 text-5xl/1 font-medium tracking-tight text-pretty text-white [font-variation-settings:'opsz'_48]" style={{ opacity: stagger(1) }}>
           <span className="text-neutral-950 dark:text-white">{t('hero_title')}</span>
@@ -28,7 +29,7 @@ export function {{endpoint.toUpperCase}}Hero() {
         </p>
         <div className="mt-10 flex items-center justify-center gap-4" style={{ opacity: stagger(3) }}>
           <Link
-            href="{{routes[0].path}}"
+            href={`/${locale}/{{endpoint}}{{primaryRouteSuffix}}`}
             className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-black px-8 text-base/7 font-medium text-white shadow-lg select-none hover:bg-neutral-800 dark:bg-linear-to-b dark:from-[oklch(0.93_0.26_110)] dark:to-[oklch(0.90_0.29_132)] dark:text-black dark:shadow-none dark:hover:bg-neutral-500"
           >
             {t('cta_text') || 'Get started'}

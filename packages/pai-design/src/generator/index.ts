@@ -139,6 +139,10 @@ export function generateEndpoint(schema: EndpointSchema, outputDir: string, forc
       continue;
     }
 
+    const firstRoute = schema.routes[0]?.path ?? '/';
+    const normalizedFirstRoute = firstRoute === '/' ? '' : '/' + firstRoute.replace(/^\/+|\/+$/g, '');
+    const pageTitleBase = schema.i18n?.en?.hero_title ?? schema.name;
+    const routeTitle = f.route ? f.route.title : schema.name;
     const templateData = {
       ...schema,
       route: f.route,
@@ -148,6 +152,22 @@ export function generateEndpoint(schema: EndpointSchema, outputDir: string, forc
       routes: schema.routes,
       skills: schema.skills,
       i18n: schema.i18n,
+      primaryRouteSuffix: normalizedFirstRoute,
+      nameLiteral: JSON.stringify(schema.name),
+      descriptionLiteral: JSON.stringify(schema.description),
+      layerLiteral: JSON.stringify(schema.layer),
+      routeTitleLiteral: JSON.stringify(routeTitle),
+      subRouteMetaTitleLiteral: JSON.stringify(`${routeTitle} | ${schema.name}`),
+      pageTitleLiteral: JSON.stringify(`${pageTitleBase} | PAI`),
+      enTitleLiteral: JSON.stringify(pageTitleBase),
+      enSubtitleLiteral: JSON.stringify(schema.i18n?.en?.hero_subtitle ?? schema.description),
+      featuresLiteral: JSON.stringify(
+        schema.skills.map(skill => ({
+          title: skill,
+          description: `Enterprise-grade ${skill} with zero-knowledge proofs.`,
+          icon: '🔐',
+        })),
+      ),
     };
 
     const content = render(loadTemplate(f.template), templateData);
@@ -163,12 +183,18 @@ function validateSchemaFromObject(schema: EndpointSchema): ValidationResult {
   if (!/^[a-z]{3,8}$/.test(schema.endpoint)) {
     errors.push({ path: '/endpoint', message: 'Endpoint must match ^[a-z]{3,8}$', severity: 'error', code: 'INVALID_ENDPOINT' });
   }
+  if (!/^#[0-9a-fA-F]{6}$/.test(schema.color)) {
+    errors.push({ path: '/color', message: 'Color must be a 6-digit hex code (#RRGGBB)', severity: 'error', code: 'INVALID_COLOR' });
+  }
   if (!schema.routes.length) {
     errors.push({ path: '/routes', message: 'At least one route required', severity: 'error', code: 'NO_ROUTES' });
   }
   for (const route of schema.routes) {
     if (route.path.split('/').some(seg => seg === '..')) {
       errors.push({ path: `/routes`, message: `Invalid route path: ${route.path}`, severity: 'error', code: 'INVALID_ROUTE_PATH' });
+    }
+    if (!/^[A-Z][a-zA-Z0-9]*$/.test(route.component)) {
+      errors.push({ path: `/routes`, message: `Invalid component identifier: ${route.component}`, severity: 'error', code: 'INVALID_COMPONENT' });
     }
   }
   return { valid: errors.length === 0, errors, warnings };

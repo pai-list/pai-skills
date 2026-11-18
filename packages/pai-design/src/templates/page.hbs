@@ -7,11 +7,11 @@ import { {{endpoint.toUpperCase}}Cta } from './components/{{endpoint.toUpperCase
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: '{{i18n.en.hero_title}} | PAI',
-  description: '{{i18n.en.hero_subtitle}}',
+  title: {{pageTitleLiteral}},
+  description: {{enSubtitleLiteral}},
   openGraph: {
-    title: '{{i18n.en.hero_title}}',
-    description: '{{i18n.en.hero_subtitle}}',
+    title: {{enTitleLiteral}},
+    description: {{enSubtitleLiteral}},
   },
 };
 

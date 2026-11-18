@@ -6,6 +6,28 @@ const VERSION = "1.0.0";
 
 interface Env {
   MEMORY?: KVNamespace;
+  MCP_AUTH_TOKEN?: string;
+}
+
+async function constantTimeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [da, db] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(a)),
+    crypto.subtle.digest("SHA-256", enc.encode(b)),
+  ]);
+  const ua = new Uint8Array(da);
+  const ub = new Uint8Array(db);
+  let diff = 0;
+  for (let i = 0; i < ua.length; i++) diff |= ua[i] ^ ub[i];
+  return diff === 0;
+}
+
+async function deriveOwnerId(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(digest))
+    .slice(0, 12)
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 /** Security headers for iframe embedding from axiomid.app */
@@ -190,7 +212,7 @@ Persistence runs on Cloudflare KV when the MEMORY binding is provisioned.
 `;
 }
 
-async function handleMcpCall(requestBody: unknown, env: Env): Promise<unknown> {
+async function handleMcpCall(requestBody: unknown, env: Env, ownerId: string): Promise<unknown> {
   const { name, arguments: args } = (requestBody as { name?: unknown; arguments?: unknown }) ?? {};
   if (name !== "pi_agent_memory") {
     return { jsonrpc: "2.0", id: null, error: { code: -32601, message: `Unknown tool: ${name}` } };
@@ -199,24 +221,35 @@ async function handleMcpCall(requestBody: unknown, env: Env): Promise<unknown> {
     return { jsonrpc: "2.0", id: null, error: { code: -32004, message: "MEMORY KV namespace not provisioned" } };
   }
   const a = (args ?? {}) as { action?: string; layer?: string; key?: string; value?: string };
-  const layer = a.layer || "general";
-  const prefix = `mem:${layer}:`;
+  const layer = typeof a.layer === "string" && a.layer.trim() ? a.layer.trim() : "general";
+  const prefix = `mem:${encodeURIComponent(ownerId)}:${encodeURIComponent(layer)}:`;
+  const toolResult = (payload: Record<string, unknown>) => ({
+    jsonrpc: "2.0",
+    id: null,
+    result: {
+      content: [{ type: "text", text: JSON.stringify(payload) }],
+      structuredContent: payload,
+      ...payload,
+    },
+  });
   try {
     if (a.action === "store") {
-      if (!a.key || typeof a.value !== "string") {
+      if (typeof a.key !== "string" || !a.key || typeof a.value !== "string") {
         return { jsonrpc: "2.0", id: null, error: { code: -32602, message: "store requires key (string) and value (string)" } };
       }
-      await env.MEMORY.put(prefix + a.key, a.value);
-      return { jsonrpc: "2.0", id: null, result: { stored: `mem:${layer}:${a.key}` } };
+      const fullKey = prefix + encodeURIComponent(a.key);
+      await env.MEMORY.put(fullKey, a.value);
+      return toolResult({ stored: fullKey, layer, key: a.key });
     }
     if (a.action === "recall") {
-      if (a.key) {
-        const value = await env.MEMORY.get(prefix + a.key);
-        return { jsonrpc: "2.0", id: null, result: { key: `mem:${layer}:${a.key}`, value: value ?? null } };
+      if (typeof a.key === "string" && a.key) {
+        const fullKey = prefix + encodeURIComponent(a.key);
+        const value = await env.MEMORY.get(fullKey);
+        return toolResult({ key: fullKey, layer, entryKey: a.key, value: value ?? null });
       }
       const list = await env.MEMORY.list({ prefix });
       const entries = list.keys.map((k) => k.name);
-      return { jsonrpc: "2.0", id: null, result: { keys: entries } };
+      return toolResult({ layer, keys: entries });
     }
     return { jsonrpc: "2.0", id: null, error: { code: -32602, message: "action must be store or recall" } };
   } catch (err) {
@@ -604,16 +637,17 @@ function copyMcpConfig() {
 }
 
 function toggleLanguage() {
-  const order: Record<string, string> = { en: 'ar', ar: 'zh', zh: 'hi', hi: 'en' };
+  const order = { en: 'ar', ar: 'zh', zh: 'hi', hi: 'en' };
   currentLang = order[currentLang] ?? 'en';
   document.documentElement.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
-  const label: Record<string, string> = { en: 'العربية AR', ar: '中文 ZH', zh: 'हिंदी HI', hi: 'EN English' };
+  const label = { en: 'العربية AR', ar: '中文 ZH', zh: 'हिंदी HI', hi: 'EN English' };
   const toggle = document.getElementById('lang-toggle');
   if (toggle) toggle.textContent = label[currentLang];
   const t = i18n[currentLang];
   document.getElementById('hero-title').textContent = t.heroTitle;
   document.getElementById('hero-desc').textContent = t.heroDesc;
-  document.getElementById('skills-heading').textContent = t.skillsHeading;
+  document.getElementById('pi-skills-heading').textContent = t.piSkillsHeading;
+  document.getElementById('ai-skills-heading').textContent = t.aiSkillsHeading;
   document.getElementById('mcp-title').textContent = t.mcpTitle;
   document.getElementById('mcp-desc').textContent = t.mcpDesc;
   document.getElementById('copy-btn').textContent = t.copyBtn;
@@ -624,6 +658,50 @@ renderSkills();
 </script>
 </body>
 </html>`;
+
+const MCP_TOOL_SCHEMAS: Record<string, Record<string, unknown>> = {
+  pi_agent_memory: {
+    type: "object",
+    properties: {
+      action: { type: "string", enum: ["store", "recall"], description: "Operation to perform" },
+      layer: { type: "string", description: "Logical memory layer namespace" },
+      key: { type: "string", description: "Memory entry key (required for store)" },
+      value: { type: "string", description: "String payload to store (required for store)" },
+    },
+    required: ["action"],
+    additionalProperties: false,
+  },
+  pi_wallet_pay: {
+    type: "object",
+    properties: {
+      recipient: { type: "string" },
+      amount: { type: "number" },
+      memo: { type: "string" },
+    },
+    required: ["recipient", "amount"],
+  },
+  pi_kyc_verify: {
+    type: "object",
+    properties: {
+      requireKyc: { type: "boolean" },
+    },
+  },
+  pi_labor_bounty: {
+    type: "object",
+    properties: {
+      title: { type: "string" },
+      rewardPi: { type: "number" },
+      verifierDid: { type: "string" },
+    },
+    required: ["title", "rewardPi"],
+  },
+};
+
+const MCP_TOOLS = PI_NETWORK_SKILLS.map((skill) => ({
+  name: skill.name,
+  description: skill.description,
+  inputSchema: MCP_TOOL_SCHEMAS[skill.name] ?? { type: "object", additionalProperties: true },
+}));
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -654,11 +732,29 @@ export default {
         return json({
           jsonrpc: "2.0",
           id: body.id ?? null,
-          result: { tools: PI_NETWORK_SKILLS },
+          result: { tools: MCP_TOOLS },
         });
       }
       if (body && body.method === "tools/call") {
-        return json(await handleMcpCall(body.params, env));
+        if (!env?.MCP_AUTH_TOKEN) {
+          return json({
+            jsonrpc: "2.0",
+            id: body.id ?? null,
+            error: { code: -32004, message: "MCP_AUTH_TOKEN is not configured" },
+          }, 503);
+        }
+        const authHeader = request.headers.get("authorization");
+        const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+        if (!bearerToken || !(await constantTimeEqual(bearerToken, env.MCP_AUTH_TOKEN))) {
+          return json({
+            jsonrpc: "2.0",
+            id: body.id ?? null,
+            error: { code: -32001, message: "Unauthorized: valid Bearer token required" },
+          }, 401);
+        }
+        const ownerId = await deriveOwnerId(bearerToken);
+        const callResult = await handleMcpCall(body.params, env, ownerId) as Record<string, unknown>;
+        return json({ ...callResult, id: body.id ?? null });
       }
       return json({
         jsonrpc: "2.0",

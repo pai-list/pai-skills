@@ -157,11 +157,30 @@ export function scanA11y(dirPath: string): A11yIssue[] {
           }
         }
 
-        lines.forEach((line, i) => {
-          // Missing label on input
-          if (/<input\s/.test(line) && !/aria-label|aria-labelledby|id=/.test(line) && !/<label/.test(code.slice(Math.max(0, code.indexOf(line) - 200)))) {
-            issues.push({ file: rel, rule: 'input-label', impact: 'serious', message: 'Input missing accessible label', selector: `line ${i + 1}` });
+        // Scan full <input ...> tags so multiline attrs, htmlFor, and enclosing <label> wrappers are checked accurately
+        const inputTagPattern = /<input\b([\s\S]*?)(?:\/>|>)/gi;
+        let inputMatch: RegExpExecArray | null;
+        while ((inputMatch = inputTagPattern.exec(code)) !== null) {
+          const attrs = inputMatch[1] ?? '';
+          if (/\btype\s*=\s*["']hidden["']/i.test(attrs)) continue;
+          if (/\baria-label(?:ledby)?\s*=/.test(attrs)) continue;
+          const idMatch = attrs.match(/\bid\s*=\s*["']([^"']+)["']/);
+          const idVal = idMatch?.[1];
+          const hasMatchingFor = Boolean(
+            idVal &&
+              new RegExp(`<label\\b[^>]*\\bhtmlFor\\s*=\\s*["']${idVal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'i').test(code),
+          );
+          const before = code.slice(0, inputMatch.index);
+          const lastOpenLabel = before.lastIndexOf('<label');
+          const lastCloseLabel = before.lastIndexOf('</label');
+          const isInsideLabel = lastOpenLabel !== -1 && lastOpenLabel > lastCloseLabel;
+          if (!hasMatchingFor && !isInsideLabel) {
+            const lineNum = before.split('\n').length;
+            issues.push({ file: rel, rule: 'input-label', impact: 'serious', message: 'Input missing accessible label', selector: `line ${lineNum}` });
           }
+        }
+
+        lines.forEach((line, i) => {
           // Color contrast (heuristic: Tailwind text-neutral-400 on light bg)
           if (/text-neutral-400|text-gray-400/.test(line) && !/dark:/.test(line)) {
             issues.push({ file: rel, rule: 'color-contrast', impact: 'moderate', message: 'Potential low contrast on light background', selector: `line ${i + 1}` });

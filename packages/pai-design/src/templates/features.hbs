@@ -5,11 +5,7 @@ import { useParallax } from '@/lib/physics/parallax';
 import { useStagger } from '@/lib/physics/stagger';
 import { useTranslations } from 'next-intl';
 
-const features = [
-  {{#each skills}}
-  { title: '{{this}}', description: 'Enterprise-grade {{this}} with zero-knowledge proofs.', icon: '🔐' },
-  {{/each}}
-];
+const features = {{featuresLiteral}};
 
 export function {{endpoint.toUpperCase}}Features() {
   const t = useTranslations('{{endpoint}}');

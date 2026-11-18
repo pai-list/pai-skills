@@ -343,7 +343,21 @@ renderPolicies();
 
 interface Env {
   AIP_SIGNING_SECRET?: string;
+  AIP_ISSUER_KEY?: string;
   UPSTREAM_URL?: string;
+}
+
+async function constantTimeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [da, db] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(a)),
+    crypto.subtle.digest("SHA-256", enc.encode(b)),
+  ]);
+  const ua = new Uint8Array(da);
+  const ub = new Uint8Array(db);
+  let diff = 0;
+  for (let i = 0; i < ua.length; i++) diff |= ua[i] ^ ub[i];
+  return diff === 0;
 }
 
 interface AipTokenClaims {
@@ -439,10 +453,20 @@ export default {
       });
     }
 
-    // Token Issuance Endpoint (cryptographically signed via AIP_SIGNING_SECRET)
+    // Token Issuance Endpoint (requires authenticated issuer key + AIP_SIGNING_SECRET)
     if (url.pathname === "/v1/tokens/issue" && request.method === "POST") {
-      if (!env?.AIP_SIGNING_SECRET) {
-        return json({ error: "SERVICE_UNAVAILABLE", message: "AIP_SIGNING_SECRET is not configured" }, 503);
+      if (!env?.AIP_SIGNING_SECRET || !env?.AIP_ISSUER_KEY) {
+        return json({
+          error: "SERVICE_UNAVAILABLE",
+          message: "AIP_SIGNING_SECRET and AIP_ISSUER_KEY must be configured",
+        }, 503);
+      }
+      const authHeader = request.headers.get("authorization");
+      const providedKey = authHeader?.startsWith("Bearer ")
+        ? authHeader.slice(7).trim()
+        : request.headers.get("x-aip-issuer-key")?.trim() ?? "";
+      if (!providedKey || !(await constantTimeEqual(providedKey, env.AIP_ISSUER_KEY))) {
+        return json({ error: "UNAUTHORIZED", message: "Valid issuer credential required" }, 401);
       }
       const body = await request.json().catch(() => null) as { agentDid?: unknown; scopes?: unknown } | null;
       const agentDid = typeof body?.agentDid === "string" && body.agentDid.trim()
@@ -529,7 +553,8 @@ export default {
         return json({ error: "BAD_GATEWAY", message: "Failed to reach upstream service" }, 502);
       }
       const responseText = await upstreamRes.text();
-      return new Response(responseText, {
+      const isBodyless = [204, 205, 304].includes(upstreamRes.status);
+      return new Response(isBodyless ? null : responseText, {
         status: upstreamRes.status,
         headers: {
           "Content-Type": upstreamRes.headers.get("content-type") || "application/json",

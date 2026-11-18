@@ -536,7 +536,10 @@ export default {
       if (!name) {
         return json({ error: "BAD_REQUEST", message: "Agent name is required" }, 400);
       }
-      const agentId = "agt_" + crypto.randomUUID().slice(0, 8);
+      let agentId = "agt_" + crypto.randomUUID();
+      while (await env.EARN_KV.get(`agent:${agentId}`)) {
+        agentId = "agt_" + crypto.randomUUID();
+      }
       const apiKey = `sk_pai_${crypto.randomUUID().replace(/-/g, "")}`;
       const record: AgentRecord = {
         agentId,
@@ -597,7 +600,7 @@ export default {
       if (!INITIAL_LISTINGS.some(l => l.id === listingId)) {
         return json({ error: "NOT_FOUND", message: `Unknown listingId: ${listingId}` }, 404);
       }
-      const submissionId = "sub_" + crypto.randomUUID().slice(0, 8);
+      const submissionId = "sub_" + crypto.randomUUID();
       const createdAt = new Date().toISOString();
       const submission = {
         submissionId,
