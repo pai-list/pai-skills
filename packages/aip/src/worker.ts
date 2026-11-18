@@ -341,12 +341,96 @@ renderPolicies();
 </body>
 </html>`;
 
+interface Env {
+  AIP_SIGNING_SECRET?: string;
+  UPSTREAM_URL?: string;
+}
+
+interface AipTokenClaims {
+  sub: string;
+  jti: string;
+  iat: number;
+  exp: number;
+  scopes: string[];
+}
+
+const TOKEN_PREFIX = "aip_tok_";
+const DEFAULT_SCOPES = ["pi:pay:read", "memory:recall", "intent:compile"];
+const ALLOWED_SCOPES = new Set([...DEFAULT_SCOPES, "email:send"]);
+
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function fromBase64Url(input: string): Uint8Array | null {
+  if (!/^[A-Za-z0-9_-]+$/.test(input)) return null;
+  const padded = input.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (input.length % 4)) % 4);
+  try {
+    const binary = atob(padded);
+    const out = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+async function importHmacKey(secret: string): Promise<CryptoKey> {
+  return crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"],
+  );
+}
+
+async function signAipToken(secret: string, claims: AipTokenClaims): Promise<string> {
+  const payload = toBase64Url(new TextEncoder().encode(JSON.stringify(claims)));
+  const key = await importHmacKey(secret);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+  return `${TOKEN_PREFIX}${payload}.${toBase64Url(new Uint8Array(sig))}`;
+}
+
+async function verifyAipToken(secret: string, rawToken: string): Promise<AipTokenClaims | null> {
+  if (!rawToken.startsWith(TOKEN_PREFIX)) return null;
+  const body = rawToken.slice(TOKEN_PREFIX.length);
+  const dotIdx = body.indexOf(".");
+  if (dotIdx <= 0) return null;
+  const payloadB64 = body.slice(0, dotIdx);
+  const sigB64 = body.slice(dotIdx + 1);
+  const sigBytes = fromBase64Url(sigB64);
+  const payloadBytes = fromBase64Url(payloadB64);
+  if (!sigBytes || !payloadBytes) return null;
+  const key = await importHmacKey(secret);
+  const ok = await crypto.subtle.verify("HMAC", key, sigBytes, new TextEncoder().encode(payloadB64));
+  if (!ok) return null;
+  try {
+    const claims = JSON.parse(new TextDecoder().decode(payloadBytes)) as AipTokenClaims;
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (!claims.sub || !Array.isArray(claims.scopes) || typeof claims.exp !== "number" || claims.exp <= nowSec) {
+      return null;
+    }
+    return claims;
+  } catch {
+    return null;
+  }
+}
+
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env?: Env): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname === "/health") {
-      return json({ name: SERVER_NAME, version: VERSION, status: "live" });
+      return json({
+        name: SERVER_NAME,
+        version: VERSION,
+        status: "live",
+        signingConfigured: Boolean(env?.AIP_SIGNING_SECRET),
+        upstreamConfigured: Boolean(env?.UPSTREAM_URL),
+      });
     }
 
     if (url.pathname === "/" || url.pathname === "/console") {
@@ -355,32 +439,102 @@ export default {
       });
     }
 
-    // Token Issuance Endpoint
+    // Token Issuance Endpoint (cryptographically signed via AIP_SIGNING_SECRET)
     if (url.pathname === "/v1/tokens/issue" && request.method === "POST") {
-      const body = await request.json().catch(() => ({ agentDid: "did:axiom:pi:agent" })) as { agentDid?: string };
-      const tokenId = "aip_tok_" + crypto.randomUUID().replace(/-/g, "");
+      if (!env?.AIP_SIGNING_SECRET) {
+        return json({ error: "SERVICE_UNAVAILABLE", message: "AIP_SIGNING_SECRET is not configured" }, 503);
+      }
+      const body = await request.json().catch(() => null) as { agentDid?: unknown; scopes?: unknown } | null;
+      const agentDid = typeof body?.agentDid === "string" && body.agentDid.trim()
+        ? body.agentDid.trim()
+        : "did:axiom:pi:agent";
+      const requestedScopes = Array.isArray(body?.scopes)
+        ? body.scopes.filter((s): s is string => typeof s === "string" && ALLOWED_SCOPES.has(s))
+        : [];
+      const scopes = requestedScopes.length > 0 ? requestedScopes : DEFAULT_SCOPES;
+      const nowSec = Math.floor(Date.now() / 1000);
+      const claims: AipTokenClaims = {
+        sub: agentDid,
+        jti: crypto.randomUUID(),
+        iat: nowSec,
+        exp: nowSec + 3600,
+        scopes,
+      };
+      const tokenId = await signAipToken(env.AIP_SIGNING_SECRET, claims);
       return json({
         status: "issued",
         tokenId,
-        agentDid: body.agentDid || "did:axiom:pi:agent",
+        agentDid,
         expiresInSeconds: 3600,
-        scopes: ["pi:pay:read", "memory:recall", "intent:compile"],
-        issuedAt: new Date().toISOString(),
+        scopes,
+        issuedAt: new Date(nowSec * 1000).toISOString(),
       });
     }
 
-    // Proxied Execution Endpoint (zero raw keys exposed to client)
+    // Proxied Execution Endpoint (verifies signed token and proxies to configured upstream)
     if (url.pathname === "/v1/proxy/execute" && request.method === "POST") {
-      const authHeader = request.headers.get("authorization");
-      if (!authHeader || !authHeader.startsWith("Bearer aip_tok_")) {
-        return json({ error: "UNAUTHORIZED", message: "Invalid or missing AIP Token" }, 401);
+      if (!env?.AIP_SIGNING_SECRET || !env?.UPSTREAM_URL) {
+        return json({
+          error: "SERVICE_UNAVAILABLE",
+          message: "AIP_SIGNING_SECRET and UPSTREAM_URL must be configured before proxying requests",
+        }, 503);
       }
-      return json({
-        status: "success",
-        proxied: true,
-        upstreamService: "pi_platform_vault",
-        message: "Executed upstream intent securely without raw API key exposure",
-        timestamp: new Date().toISOString(),
+      const authHeader = request.headers.get("authorization");
+      const rawToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+      const claims = rawToken ? await verifyAipToken(env.AIP_SIGNING_SECRET, rawToken) : null;
+      if (!claims) {
+        return json({ error: "UNAUTHORIZED", message: "Invalid or expired AIP Token" }, 401);
+      }
+      if (!claims.scopes.includes("intent:compile")) {
+        return json({ error: "FORBIDDEN", message: "Token lacks intent:compile scope" }, 403);
+      }
+
+      const body = await request.json().catch(() => null) as {
+        path?: unknown;
+        method?: unknown;
+        payload?: unknown;
+      } | null;
+      const targetPath = typeof body?.path === "string" ? body.path : "";
+      if (!targetPath.startsWith("/") || targetPath.startsWith("//") || targetPath.includes("..")) {
+        return json({ error: "BAD_REQUEST", message: "A safe relative upstream path starting with '/' is required" }, 400);
+      }
+
+      let baseOrigin: string;
+      let targetUrl: URL;
+      try {
+        const base = new URL(env.UPSTREAM_URL);
+        baseOrigin = base.origin;
+        targetUrl = new URL(targetPath, base);
+      } catch {
+        return json({ error: "BAD_GATEWAY", message: "Invalid UPSTREAM_URL configuration" }, 502);
+      }
+      if (targetUrl.origin !== baseOrigin) {
+        return json({ error: "BAD_REQUEST", message: "Cross-origin upstream override rejected" }, 400);
+      }
+
+      const method = typeof body?.method === "string" && ["GET", "POST"].includes(body.method.toUpperCase())
+        ? body.method.toUpperCase()
+        : "POST";
+      const upstreamRes = await fetch(targetUrl.toString(), {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          "X-AIP-Agent-DID": claims.sub,
+          "X-AIP-Token-ID": claims.jti,
+        },
+        body: method === "POST" ? JSON.stringify(body?.payload ?? {}) : undefined,
+      }).catch(() => null);
+
+      if (!upstreamRes) {
+        return json({ error: "BAD_GATEWAY", message: "Failed to reach upstream service" }, 502);
+      }
+      const responseText = await upstreamRes.text();
+      return new Response(responseText, {
+        status: upstreamRes.status,
+        headers: {
+          "Content-Type": upstreamRes.headers.get("content-type") || "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
       });
     }
 

@@ -452,12 +452,60 @@ renderListings();
 </body>
 </html>`;
 
+interface KvStore {
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string): Promise<void>;
+}
+
+interface Env {
+  EARN_KV?: KvStore;
+}
+
+interface AgentRecord {
+  agentId: string;
+  name: string;
+  agentDid: string;
+  claimCode: string;
+  trustScore: number;
+  registeredAt: string;
+  lastHeartbeatAt: string | null;
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function authenticateAgent(request: Request, kv: KvStore): Promise<AgentRecord | null> {
+  const auth = request.headers.get("authorization");
+  if (!auth || !auth.startsWith("Bearer ")) return null;
+  const rawKey = auth.slice(7).trim();
+  if (!rawKey) return null;
+  const agentId = await kv.get(`token:${await sha256Hex(rawKey)}`);
+  if (!agentId) return null;
+  const rawRecord = await kv.get(`agent:${agentId}`);
+  if (!rawRecord) return null;
+  try {
+    return JSON.parse(rawRecord) as AgentRecord;
+  } catch {
+    return null;
+  }
+}
+
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env?: Env): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname === "/health") {
-      return json({ name: SERVER_NAME, version: VERSION, status: "live" });
+      return json({
+        name: SERVER_NAME,
+        version: VERSION,
+        status: "live",
+        persistenceConfigured: Boolean(env?.EARN_KV),
+      });
     }
     if (url.pathname === "/skill.md") {
       return new Response(SKILL_MD_CONTENT, {
@@ -475,39 +523,103 @@ export default {
       });
     }
 
-    // API Routes
-    if (url.pathname === "/api/agents/register" && request.method === "POST") {
-      const body = await request.json().catch(() => ({ name: "unknown-agent" })) as { name?: string };
-      const agentId = "agt_" + crypto.randomUUID().slice(0, 8);
-      return json({
-        agentId,
-        name: body.name || "pi-agent",
-        agentDid: `did:axiom:pi:${agentId}`,
-        apiKey: `sk_pai_${crypto.randomUUID().replace(/-/g, "")}`,
-        claimCode: `claim_${crypto.randomUUID().slice(0, 8)}`,
-        trustScore: 100,
-      });
-    }
-
     if (url.pathname === "/api/agents/listings/live") {
       return json({ status: "success", listings: INITIAL_LISTINGS });
     }
 
+    if (url.pathname === "/api/agents/register" && request.method === "POST") {
+      if (!env?.EARN_KV) {
+        return json({ error: "SERVICE_UNAVAILABLE", message: "EARN_KV binding is not configured" }, 503);
+      }
+      const body = await request.json().catch(() => null) as { name?: unknown } | null;
+      const name = typeof body?.name === "string" ? body.name.trim() : "";
+      if (!name) {
+        return json({ error: "BAD_REQUEST", message: "Agent name is required" }, 400);
+      }
+      const agentId = "agt_" + crypto.randomUUID().slice(0, 8);
+      const apiKey = `sk_pai_${crypto.randomUUID().replace(/-/g, "")}`;
+      const record: AgentRecord = {
+        agentId,
+        name,
+        agentDid: `did:axiom:pi:${agentId}`,
+        claimCode: `claim_${crypto.randomUUID().slice(0, 8)}`,
+        trustScore: 100,
+        registeredAt: new Date().toISOString(),
+        lastHeartbeatAt: null,
+      };
+      await env.EARN_KV.put(`agent:${agentId}`, JSON.stringify(record));
+      await env.EARN_KV.put(`token:${await sha256Hex(apiKey)}`, agentId);
+      return json({ ...record, apiKey }, 201);
+    }
+
     if (url.pathname === "/api/agents/heartbeat" && request.method === "POST") {
+      if (!env?.EARN_KV) {
+        return json({ error: "SERVICE_UNAVAILABLE", message: "EARN_KV binding is not configured" }, 503);
+      }
+      const agent = await authenticateAgent(request, env.EARN_KV);
+      if (!agent) {
+        return json({ error: "UNAUTHORIZED", message: "Valid registered API key is required" }, 401);
+      }
+      const timestamp = new Date().toISOString();
+      const updated: AgentRecord = { ...agent, lastHeartbeatAt: timestamp };
+      await env.EARN_KV.put(`agent:${agent.agentId}`, JSON.stringify(updated));
       return json({
         status: "active",
-        timestamp: new Date().toISOString(),
-        trustScore: 100,
+        agentId: agent.agentId,
+        timestamp,
+        trustScore: updated.trustScore,
         pendingListingsCount: INITIAL_LISTINGS.length,
       });
+    }
+
+    if (url.pathname === "/api/agents/submissions/create" && request.method === "POST") {
+      if (!env?.EARN_KV) {
+        return json({ error: "SERVICE_UNAVAILABLE", message: "EARN_KV binding is not configured" }, 503);
+      }
+      const agent = await authenticateAgent(request, env.EARN_KV);
+      if (!agent) {
+        return json({ error: "UNAUTHORIZED", message: "Valid registered API key is required" }, 401);
+      }
+      const body = await request.json().catch(() => null) as {
+        listingId?: unknown;
+        summary?: unknown;
+        artifactUrl?: unknown;
+      } | null;
+      const listingId = typeof body?.listingId === "string" ? body.listingId.trim() : "";
+      const summary = typeof body?.summary === "string" ? body.summary.trim() : "";
+      const artifactUrl = typeof body?.artifactUrl === "string" ? body.artifactUrl.trim() : "";
+      if (!listingId || (!summary && !artifactUrl)) {
+        return json({
+          error: "BAD_REQUEST",
+          message: "listingId and either summary or artifactUrl are required",
+        }, 400);
+      }
+      if (!INITIAL_LISTINGS.some(l => l.id === listingId)) {
+        return json({ error: "NOT_FOUND", message: `Unknown listingId: ${listingId}` }, 404);
+      }
+      const submissionId = "sub_" + crypto.randomUUID().slice(0, 8);
+      const createdAt = new Date().toISOString();
+      const submission = {
+        submissionId,
+        agentId: agent.agentId,
+        agentDid: agent.agentDid,
+        listingId,
+        summary,
+        artifactUrl,
+        status: "submitted",
+        createdAt,
+      };
+      await env.EARN_KV.put(`submission:${submissionId}`, JSON.stringify(submission));
+      return json(submission, 201);
     }
 
     return new Response("not found", { status: 404 });
   },
 };
 
-function json(value: unknown): Response {
+function json(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
+    status,
     headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
   });
 }

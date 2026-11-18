@@ -1,0 +1,21 @@
+import { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: '{{route.title}} | {{name}}',
+  description: '{{description}}',
+};
+
+export default function {{componentName}}() {
+  return (
+    <main className="min-h-screen bg-white dark:bg-neutral-950 px-6 py-24">
+      <div className="mx-auto max-w-5xl">
+        <h1 className="text-4xl font-medium tracking-tight text-neutral-950 dark:text-white">
+          {{route.title}}
+        </h1>
+        <p className="mt-4 text-neutral-600 dark:text-neutral-400">
+          {{description}}
+        </p>
+      </div>
+    </main>
+  );
+}

@@ -5,6 +5,6 @@ export const initCommand = new Command('init')
   .argument('<name>', 'Skill name')
   .option('-c, --category <category>', 'Skill category', 'utility')
   .option('--author <author>', 'Author name')
-  .action(async (name, options) => {
+  .action(async (name, _options) => {
     console.log(`Creating skill scaffold: ${name}`);
   });

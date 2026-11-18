@@ -645,7 +645,11 @@ export default {
       return html(PAGE_HTML);
     }
     if (url.pathname === "/mcp" || request.method === "POST") {
-      const body = await request.json().catch(() => null);
+      const body = await request.json().catch(() => null) as {
+        method?: unknown;
+        id?: unknown;
+        params?: unknown;
+      } | null;
       if (body && body.method === "tools/list") {
         return json({
           jsonrpc: "2.0",

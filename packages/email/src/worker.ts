@@ -346,12 +346,73 @@ renderInbox();
 </body>
 </html>`;
 
+interface Env {
+  RESEND_API_KEY?: string;
+  AIP_SIGNING_SECRET?: string;
+  EMAIL_FROM?: string;
+}
+
+interface AipTokenClaims {
+  sub: string;
+  exp: number;
+  scopes: string[];
+}
+
+function fromBase64Url(input: string): Uint8Array | null {
+  if (!/^[A-Za-z0-9_-]+$/.test(input)) return null;
+  const padded = input.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (input.length % 4)) % 4);
+  try {
+    const binary = atob(padded);
+    const out = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+async function verifyAipEmailToken(secret: string, rawToken: string): Promise<AipTokenClaims | null> {
+  const prefix = "aip_tok_";
+  if (!rawToken.startsWith(prefix)) return null;
+  const body = rawToken.slice(prefix.length);
+  const dotIdx = body.indexOf(".");
+  if (dotIdx <= 0) return null;
+  const payloadB64 = body.slice(0, dotIdx);
+  const sigB64 = body.slice(dotIdx + 1);
+  const sigBytes = fromBase64Url(sigB64);
+  const payloadBytes = fromBase64Url(payloadB64);
+  if (!sigBytes || !payloadBytes) return null;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+  const valid = await crypto.subtle.verify("HMAC", key, sigBytes, new TextEncoder().encode(payloadB64));
+  if (!valid) return null;
+  try {
+    const claims = JSON.parse(new TextDecoder().decode(payloadBytes)) as AipTokenClaims;
+    if (!claims.sub || !Array.isArray(claims.scopes) || typeof claims.exp !== "number" || claims.exp <= Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+    return claims;
+  } catch {
+    return null;
+  }
+}
+
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env?: Env): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname === "/health") {
-      return json({ name: SERVER_NAME, version: VERSION, status: "live" });
+      return json({
+        name: SERVER_NAME,
+        version: VERSION,
+        status: "live",
+        resendConfigured: Boolean(env?.RESEND_API_KEY && env?.AIP_SIGNING_SECRET),
+      });
     }
 
     if (url.pathname === "/" || url.pathname === "/console") {
@@ -361,13 +422,63 @@ export default {
     }
 
     if (url.pathname === "/api/email/send" && request.method === "POST") {
-      const authHeader = request.headers.get("authorization");
-      if (!authHeader || !authHeader.startsWith("Bearer aip_tok_")) {
-        return json({ error: "UNAUTHORIZED", message: "AIP Token required for outbound email sending" }, 401);
+      if (!env?.RESEND_API_KEY || !env?.AIP_SIGNING_SECRET) {
+        return json({
+          error: "SERVICE_UNAVAILABLE",
+          message: "RESEND_API_KEY and AIP_SIGNING_SECRET must be configured before sending email",
+        }, 503);
       }
+
+      const authHeader = request.headers.get("authorization");
+      const rawToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+      const claims = rawToken ? await verifyAipEmailToken(env.AIP_SIGNING_SECRET, rawToken) : null;
+      if (!claims) {
+        return json({ error: "UNAUTHORIZED", message: "Valid signed AIP Token required for outbound email sending" }, 401);
+      }
+      if (!claims.scopes.includes("email:send")) {
+        return json({ error: "FORBIDDEN", message: "AIP Token does not grant email:send scope" }, 403);
+      }
+
+      const body = await request.json().catch(() => null) as {
+        to?: unknown;
+        subject?: unknown;
+        text?: unknown;
+        html?: unknown;
+      } | null;
+      const to = typeof body?.to === "string" ? body.to.trim() : "";
+      const subject = typeof body?.subject === "string" ? body.subject.trim() : "";
+      const text = typeof body?.text === "string" ? body.text : undefined;
+      const htmlContent = typeof body?.html === "string" ? body.html : undefined;
+      if (!to || !subject || (!text && !htmlContent)) {
+        return json({ error: "BAD_REQUEST", message: "to, subject, and text or html are required" }, 400);
+      }
+
+      const resendRes = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: env.EMAIL_FROM || "agents@mail.axiomid.app",
+          to,
+          subject,
+          text,
+          html: htmlContent,
+        }),
+      }).catch(() => null);
+
+      if (!resendRes) {
+        return json({ error: "BAD_GATEWAY", message: "Failed to reach Resend API" }, 502);
+      }
+      const resendBody = await resendRes.json().catch(() => ({})) as { id?: string; message?: string };
+      if (!resendRes.ok) {
+        return json({ error: "UPSTREAM_ERROR", message: resendBody.message || "Resend API rejected request" }, resendRes.status);
+      }
+
       return json({
-        status: "queued",
-        messageId: "msg_" + crypto.randomUUID().slice(0, 8),
+        status: "sent",
+        messageId: resendBody.id ?? null,
         provider: "resend_api",
         timestamp: new Date().toISOString(),
       });

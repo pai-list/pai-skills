@@ -15,14 +15,14 @@ export function {{endpoint.toUpperCase}}Cta() {
           Ready to build with {{name}}?
         </h2>
         <p className="text-neutral-400 mb-8">
-          {{t('hero_subtitle')}}
+          {t('hero_subtitle')}
         </p>
         <div className="flex items-center justify-center gap-4">
           <Link
             href="{{routes[0].path}}"
             className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-black px-8 text-base/7 font-medium text-white shadow-lg select-none hover:bg-neutral-800 dark:bg-linear-to-b dark:from-[oklch(0.93_0.26_110)] dark:to-[oklch(0.90_0.29_132)] dark:text-black dark:shadow-none dark:hover:bg-neutral-500"
           >
-            {{t('cta_text') || 'Start building'}}
+            {t('cta_text') || 'Start building'}
             <svg className="size-4 stroke-current" fill="none" viewBox="0 0 16 16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.25 2.75v7.5m0-7.5h-7.5m7.5 0-10.5 10.5" /></svg>
           </Link>
           <Link

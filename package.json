@@ -15,7 +15,7 @@
     "prettier-plugin-tailwindcss": "^0.5.0",
     "turbo": "^2.0.0",
     "typescript": "^5",
-    "vitest": "^4.0.17"
+    "vitest": "^2.1.9"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -31,7 +31,7 @@
     "docs:dev": "turbo run dev --filter=@pai/skills-docs",
     "lint": "turbo run lint",
     "publish:all": "turbo run publish",
-    "test": "turbo run test",
+    "test": "vitest run && turbo run test",
     "typecheck": "turbo run typecheck"
   }
 }

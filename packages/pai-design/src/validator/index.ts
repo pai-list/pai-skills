@@ -2,16 +2,22 @@
  * PAI DESIGN — Schema Validator
  * Validates endpoint schemas + generated code for gaps, duplications, security issues
  */
-import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
-import { resolve, extname, relative } from 'node:path';
-import Ajv from 'ajv';
+import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { resolve, dirname, extname, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import Ajv2020 from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
 import yaml from 'yaml';
 
-const ajv = new Ajv({ allErrors: true, strict: false });
+const ajv = new Ajv2020({ allErrors: true, strict: false });
 addFormats(ajv);
 
-const SCHEMA_PATH = resolve(__dirname, '../schemas/endpoint-schema.json');
+const CURRENT_DIR = typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPath(import.meta.url));
+const SCHEMA_PATH =
+  [
+    resolve(CURRENT_DIR, '../../schemas/endpoint-schema.json'),
+    resolve(CURRENT_DIR, '../schemas/endpoint-schema.json'),
+  ].find(p => existsSync(p)) ?? resolve(CURRENT_DIR, '../../schemas/endpoint-schema.json');
 const schema = JSON.parse(readFileSync(SCHEMA_PATH, 'utf-8'));
 const validate = ajv.compile(schema);
 
@@ -56,7 +62,7 @@ export function validateSchema(schemaPath: string): ValidationResult {
       comps.add(r.component);
     }
     // Check for missing common routes
-    const paths = data.routes.map(r => r.path);
+    const paths = (data.routes as { path: string }[]).map(r => r.path);
     if (!paths.some(p => p === '/' || p.endsWith('/'))) {
       warnings.push({ path: '/routes', message: 'No root route (/) defined', code: 'MISSING_ROOT' });
     }

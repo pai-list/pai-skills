@@ -3,10 +3,12 @@
  * Visual regression (perceptual hash), physics hooks validation, a11y (axe-core)
  */
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, statSync } from 'node:fs';
-import { resolve, extname, relative } from 'node:path';
+import { resolve, dirname, extname, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 
-const DESIGNER_DIR = resolve(__dirname, '../designer-output');
+const CURRENT_DIR = typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPath(import.meta.url));
+const DESIGNER_DIR = resolve(CURRENT_DIR, '../designer-output');
 
 export interface VisualSnapshot {
   file: string;
@@ -50,10 +52,11 @@ export interface DesignerReport {
 
 /** Generate perceptual hash from file structure (simplified) */
 function structuralHash(content: string): string {
-  // Extract structural tokens: component names, hooks, jsx structure
+  // Extract structural tokens: intrinsic + custom JSX tags, physics hooks, Tailwind classes
   const tokens = content
     .replace(/\s+/g, ' ')
-    .match(/<[A-Z][a-zA-Z0-9]*|useMagnetic|useParallax|useStagger|useSpring|className="[^"]*"/g) || [];
+    .match(/<[a-zA-Z][a-zA-Z0-9]*|useMagnetic|useParallax|useStagger|useSpring|className="[^"]*"/g) || [];
+  if (tokens.length === 0) return '';
   return createHash('sha256').update(tokens.sort().join('|')).digest('hex').slice(0, 16);
 }
 
@@ -85,6 +88,7 @@ export function scanVisual(dirPath: string): VisualSnapshot[] {
 export function findVisualDuplicates(snapshots: VisualSnapshot[]): { hash: string; files: string[] }[] {
   const byHash = new Map<string, string[]>();
   for (const s of snapshots) {
+    if (!s.phash) continue;
     byHash.set(s.phash, [...(byHash.get(s.phash) || []), s.file]);
   }
   return Array.from(byHash.entries())
@@ -142,12 +146,18 @@ export function scanA11y(dirPath: string): A11yIssue[] {
         const code = readFileSync(full, 'utf-8');
         const rel = relative(dirPath, full);
         const lines = code.split('\n');
-        
-        lines.forEach((line, i) => {
-          // Missing alt on img
-          if (/<img\s/.test(line) && !/alt\s*=/.test(line)) {
-            issues.push({ file: rel, rule: 'img-alt', impact: 'serious', message: 'Image missing alt attribute', selector: `line ${i + 1}` });
+
+        // Scan full opening <img ...> tags so multiline attributes (like alt) are respected
+        const imgTagPattern = /<img\b([\s\S]*?)>/gi;
+        let imgMatch: RegExpExecArray | null;
+        while ((imgMatch = imgTagPattern.exec(code)) !== null) {
+          if (!/\balt\s*=/.test(imgMatch[1] ?? '')) {
+            const lineNum = code.slice(0, imgMatch.index).split('\n').length;
+            issues.push({ file: rel, rule: 'img-alt', impact: 'serious', message: 'Image missing alt attribute', selector: `line ${lineNum}` });
           }
+        }
+
+        lines.forEach((line, i) => {
           // Missing label on input
           if (/<input\s/.test(line) && !/aria-label|aria-labelledby|id=/.test(line) && !/<label/.test(code.slice(Math.max(0, code.indexOf(line) - 200)))) {
             issues.push({ file: rel, rule: 'input-label', impact: 'serious', message: 'Input missing accessible label', selector: `line ${i + 1}` });

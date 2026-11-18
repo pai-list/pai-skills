@@ -3,9 +3,9 @@
  * Renders endpoint schemas → complete Next.js pages with MagicUI physics hooks
  */
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from 'node:fs';
-import { resolve, dirname, relative } from 'node:path';
-import yaml from 'yaml';
-import { validateSchema, ValidationResult } from './validator';
+import { resolve, dirname, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { ValidationResult } from '../validator';
 
 export interface EndpointSchema {
   endpoint: string;
@@ -25,17 +25,67 @@ export interface Route {
   title: string;
 }
 
-const TEMPLATE_DIR = resolve(__dirname, '../templates');
+const CURRENT_DIR = typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPath(import.meta.url));
+
+function resolveTemplateDir(): string {
+  const candidates = [
+    resolve(CURRENT_DIR, '../templates'),
+    resolve(CURRENT_DIR, '../../src/templates'),
+  ];
+  return candidates.find(dir => existsSync(dir)) ?? candidates[0];
+}
+
+const TEMPLATE_DIR = resolveTemplateDir();
+
+function resolvePath(data: Record<string, unknown>, expr: string): unknown {
+  if (expr === 'this') return data.this;
+  if (expr === '@index') return data['@index'];
+  const segments = expr.replace(/\[(\d+)\]/g, '.$1').split('.');
+  let current: unknown = data;
+  for (const seg of segments) {
+    if (current == null) return undefined;
+    if (seg === 'toUpperCase' && typeof current === 'string') {
+      current = current.toUpperCase();
+      continue;
+    }
+    if (seg === 'length' && (Array.isArray(current) || typeof current === 'string')) {
+      current = current.length;
+      continue;
+    }
+    if (Array.isArray(current)) {
+      const idx = Number(seg);
+      current = Number.isInteger(idx) ? current[idx] : undefined;
+    } else if (typeof current === 'object') {
+      current = (current as Record<string, unknown>)[seg];
+    } else {
+      return undefined;
+    }
+  }
+  return current;
+}
 
 /** Handlebars-style simple template renderer (zero-dep) */
 function render(template: string, data: Record<string, unknown>): string {
   return template
-    .replace(/\{\{#each (\w+)\}\}([\s\S]*?)\{\{\/each\}\}/g, (_, key, block) => {
-      const arr = (data[key] as unknown[]) || [];
-      return arr.map(item => block.replace(/\{\{(\w+)\}\}/g, (__, prop) => String((item as Record<string, unknown>)[prop] ?? ''))).join('');
+    .replace(/\{\{#each ([\w.[\]]+)\}\}([\s\S]*?)\{\{\/each\}\}/g, (_, key, block) => {
+      const arr = resolvePath(data, key);
+      if (!Array.isArray(arr)) return '';
+      return arr
+        .map((item, idx) => {
+          const itemScope: Record<string, unknown> =
+            item !== null && typeof item === 'object'
+              ? { ...data, ...(item as Record<string, unknown>), this: item, '@index': idx }
+              : { ...data, this: item, '@index': idx };
+          return block.replace(/\{\{([@\w.[\]]+)\}\}/g, (_: string, expr: string) =>
+            String(resolvePath(itemScope, expr) ?? '')
+          );
+        })
+        .join('');
     })
-    .replace(/\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_, key, block) => data[key] ? block : '')
-    .replace(/\{\{(\w+)\}\}/g, (_, key) => String(data[key] ?? ''));
+    .replace(/\{\{#if ([\w.[\]]+)\}\}([\s\S]*?)(?:\{\{else\}\}([\s\S]*?))?\{\{\/if\}\}/g, (_, key, block, elseBlock = '') =>
+      resolvePath(data, key) ? block : elseBlock
+    )
+    .replace(/\{\{([@\w.[\]]+)\}\}/g, (_, expr) => String(resolvePath(data, expr) ?? ''));
 }
 
 /** Load template file */
@@ -55,7 +105,7 @@ export function generateEndpoint(schema: EndpointSchema, outputDir: string, forc
   if (!validation.valid) return validation;
 
   // Generate files
-  const files = [
+  const files: { path: string; template: string; isClient: boolean; route?: Route }[] = [
     { path: 'page.tsx', template: 'page', isClient: false },
     { path: 'layout.tsx', template: 'layout', isClient: false },
     { path: `components/${schema.endpoint.toUpperCase()}Hero.tsx`, template: 'hero', isClient: true },
@@ -66,7 +116,7 @@ export function generateEndpoint(schema: EndpointSchema, outputDir: string, forc
 
   // Sub-route pages
   for (const route of schema.routes) {
-    const routeDir = route.path.replace(/^\//, '').replace(/\//g, '/');
+    const routeDir = route.path.replace(/^\/+/, '').replace(/\/+$/, '');
     if (routeDir) {
       files.push({ path: `${routeDir}/page.tsx`, template: 'sub-route', isClient: true, route });
     }
@@ -74,6 +124,13 @@ export function generateEndpoint(schema: EndpointSchema, outputDir: string, forc
 
   for (const f of files) {
     const fullPath = resolve(baseDir, f.path);
+    if (!fullPath.startsWith(baseDir + sep)) {
+      return {
+        valid: false,
+        errors: [{ path: f.path, message: 'Resolved output path escapes endpoint directory', severity: 'error', code: 'PATH_TRAVERSAL' }],
+        warnings: results.warnings,
+      };
+    }
     const dir = dirname(fullPath);
     mkdirSync(dir, { recursive: true });
 
@@ -103,7 +160,17 @@ export function generateEndpoint(schema: EndpointSchema, outputDir: string, forc
 function validateSchemaFromObject(schema: EndpointSchema): ValidationResult {
   const errors: ValidationResult['errors'] = [];
   const warnings: ValidationResult['warnings'] = [];
-  if (!schema.routes.length) errors.push({ path: '/routes', message: 'At least one route required', severity: 'error', code: 'NO_ROUTES' });
+  if (!/^[a-z]{3,8}$/.test(schema.endpoint)) {
+    errors.push({ path: '/endpoint', message: 'Endpoint must match ^[a-z]{3,8}$', severity: 'error', code: 'INVALID_ENDPOINT' });
+  }
+  if (!schema.routes.length) {
+    errors.push({ path: '/routes', message: 'At least one route required', severity: 'error', code: 'NO_ROUTES' });
+  }
+  for (const route of schema.routes) {
+    if (route.path.split('/').some(seg => seg === '..')) {
+      errors.push({ path: `/routes`, message: `Invalid route path: ${route.path}`, severity: 'error', code: 'INVALID_ROUTE_PATH' });
+    }
+  }
   return { valid: errors.length === 0, errors, warnings };
 }
 
