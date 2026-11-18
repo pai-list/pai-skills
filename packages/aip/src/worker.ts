@@ -1,0 +1,575 @@
+// aip.axiomid.app — Axiom Identity Protocol (AIP) Security Gateway
+// Never expose raw API keys to agents — Issue short-lived AIP Tokens & proxy securely!
+
+const SERVER_NAME = "axiomid-aip-gateway";
+const VERSION = "1.0.0";
+
+const SECURITY_POLICIES = [
+  {
+    id: "pol_zero_raw_keys",
+    name: "Zero Raw Keys in Runtime",
+    status: "ENFORCED",
+    description: "Raw API keys (OpenAI, Pi Platform, Stellar) remain strictly isolated in backend vault. Agents receive scoped AIP Tokens.",
+  },
+  {
+    id: "pol_did_token_binding",
+    name: "W3C DID Token Binding",
+    status: "ENFORCED",
+    description: "Every AIP Token (aip_tok_...) is cryptographically bound to the agent's sovereign DID (did:axiom:pi:...).",
+  },
+  {
+    id: "pol_rate_and_scope",
+    name: "Scoped Capabilities & TTL",
+    status: "ENFORCED",
+    description: "Tokens automatically expire after 1 hour and grant least-privilege action scopes (e.g., pi:pay:read, memory:recall).",
+  },
+];
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+const PAGE_HTML = `<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>AIP — Axiom Identity Protocol Security Gateway (aip.axiomid.app)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-base: #020617;
+    --bg-card: rgba(15, 23, 42, 0.75);
+    --border-glass: rgba(255, 255, 255, 0.08);
+    --border-glass-hover: rgba(168, 85, 247, 0.4);
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --accent-purple: #a855f7;
+    --accent-cyan: #06b6d4;
+    --accent-emerald: #10b981;
+    --font-sans: 'Inter', system-ui, sans-serif;
+    --font-mono: 'Fira Code', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background-color: var(--bg-base);
+    background-image: 
+      radial-gradient(circle at 10% 20%, rgba(168, 85, 247, 0.08) 0%, transparent 45%),
+      radial-gradient(circle at 90% 80%, rgba(6, 182, 212, 0.08) 0%, transparent 45%),
+      linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 32px 32px, 32px 32px;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    border-bottom: 1px solid var(--border-glass);
+    background: rgba(2, 6, 23, 0.85);
+    backdrop-filter: blur(16px);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
+  .header-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .brand-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    text-decoration: none;
+    color: var(--text-primary);
+    font-weight: 800;
+    font-size: 1.25rem;
+  }
+
+  .brand-badge {
+    padding: 0.25rem 0.65rem;
+    background: rgba(168, 85, 247, 0.1);
+    border: 1px solid rgba(168, 85, 247, 0.3);
+    border-radius: 9999px;
+    color: var(--accent-purple);
+    font-size: 0.7rem;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+  }
+
+  .lang-btn {
+    background: transparent;
+    border: 1px solid var(--border-glass);
+    color: var(--text-secondary);
+    padding: 0.4rem 0.8rem;
+    border-radius: 0.5rem;
+    font-size: 0.8rem;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .lang-btn:hover {
+    border-color: var(--accent-purple);
+    color: var(--accent-purple);
+  }
+
+  main {
+    flex: 1;
+    max-width: 1200px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2.5rem;
+  }
+
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+
+  @media (min-width: 900px) {
+    .hero-grid { grid-template-columns: 1.2fr 0.8fr; }
+  }
+
+  .hero-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-glass);
+    backdrop-filter: blur(20px);
+    border-radius: 1.5rem;
+    padding: 2.5rem;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .hero-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent-purple), var(--accent-cyan), var(--accent-emerald));
+  }
+
+  .hero-title {
+    font-size: clamp(2rem, 3.5vw, 2.75rem);
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, #ffffff 40%, var(--text-secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 1rem;
+  }
+
+  .hero-desc {
+    color: var(--text-secondary);
+    font-size: 1rem;
+    line-height: 1.6;
+    margin-bottom: 1.5rem;
+  }
+
+  .console-card {
+    background: #010409;
+    border: 1px solid var(--border-glass);
+    border-radius: 1.25rem;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    font-family: var(--font-mono);
+  }
+
+  .code-block {
+    background: #0d1117;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 0.5rem;
+    padding: 0.85rem;
+    font-size: 0.75rem;
+    color: #e6edf3;
+    overflow-x: auto;
+  }
+
+  .policy-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  @media (min-width: 768px) {
+    .policy-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+
+  .policy-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-glass);
+    backdrop-filter: blur(16px);
+    border-radius: 1.25rem;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    transition: all 0.25s ease;
+  }
+
+  .policy-card:hover {
+    border-color: var(--border-glass-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px -10px rgba(168, 85, 247, 0.15);
+  }
+
+  footer {
+    border-top: 1px solid var(--border-glass);
+    padding: 2rem 1.5rem;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-family: var(--font-mono);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <a href="/" class="brand-logo">
+      <span>AIP Gateway</span>
+      <span class="brand-badge">aip.axiomid.app</span>
+    </a>
+    <button class="lang-btn" id="lang-toggle" onclick="toggleLanguage()">AR / العربية</button>
+  </div>
+</header>
+
+<main>
+  <div class="hero-grid">
+    <section class="hero-card">
+      <h1 class="hero-title" id="hero-title">Zero Raw Keys Token Gateway</h1>
+      <p class="hero-desc" id="hero-desc">
+        The Axiom Identity Protocol (AIP) insulates AI agents from raw API keys. Secret credentials stay isolated in backend vaults while agents execute via scoped, short-lived AIP Tokens (aip_tok_...).
+      </p>
+    </section>
+
+    <section class="console-card">
+      <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.5rem; border-b: 1px solid var(--border-glass);">
+        <span style="font-size: 0.75rem; color: var(--accent-purple);">AIP Token Issuance Test</span>
+        <span style="font-size: 0.68rem; color: var(--accent-emerald);">● VAULT LIVE</span>
+      </div>
+      <p style="font-size: 0.75rem; color: var(--text-secondary);">1. Request Scoped AIP Token</p>
+      <div class="code-block">POST https://aip.axiomid.app/v1/tokens/issue</div>
+      <p style="font-size: 0.75rem; color: var(--text-secondary);">2. Execute Proxied Intent</p>
+      <div class="code-block">POST https://aip.axiomid.app/v1/proxy/execute -H "Authorization: Bearer aip_tok_99a81b..."</div>
+    </section>
+  </div>
+
+  <section>
+    <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 1.25rem;" id="pol-heading">🛡️ Security Enforcements (3)</h2>
+    <div class="policy-grid" id="policy-container"></div>
+  </section>
+</main>
+
+<footer>
+  <p id="footer-text">aip.axiomid.app · PAI Universe Security Protocol · Built with Ihsan</p>
+</footer>
+
+<script>
+const policies = ${JSON.stringify(SECURITY_POLICIES)};
+let currentLang = 'en';
+
+const i18n = {
+  en: {
+    heroTitle: "Zero Raw Keys Token Gateway",
+    heroDesc: "The Axiom Identity Protocol (AIP) insulates AI agents from raw API keys. Secret credentials stay isolated in backend vaults while agents execute via scoped, short-lived AIP Tokens (aip_tok_...).",
+    polHeading: "🛡️ Security Enforcements (3)",
+    footerText: "aip.axiomid.app · PAI Universe Security Protocol · Built with Ihsan"
+  },
+  ar: {
+    heroTitle: "بوابة الرمز التشفيري بدون مفاتيح خام",
+    heroDesc: "يعزل بروتوكول الهوية السيادي AIP وكلاء الذكاء الاصطناعي تماماً عن مفاتيح الـ API الخام. تبقى المفاتيح الحساسة مشفرة في الخزينة الخلفية، بينما ينفذ الوكلاء عبر رموز AIP مؤقتة ومحدودة الصلاحية.",
+    polHeading: "🛡️ ضوابط الأمان السيادية (3)",
+    footerText: "aip.axiomid.app · بروتوكول الحماية لمنظومة PAI Universe · بنيت بإحسان"
+  }
+};
+
+function renderPolicies() {
+  const container = document.getElementById('policy-container');
+  container.innerHTML = policies.map(p => \`
+    <div class="policy-card">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 0.7rem; font-family: var(--font-mono); color: var(--accent-emerald); background: rgba(16, 185, 129, 0.1); padding: 0.2rem 0.5rem; border-radius: 0.35rem;">\${p.status}</span>
+      </div>
+      <h3 style="font-size: 1rem; font-weight: 700; color: #fff;">\${p.name}</h3>
+      <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">\${p.description}</p>
+    </div>
+  \`).join('');
+}
+
+function toggleLanguage() {
+  currentLang = currentLang === 'en' ? 'ar' : 'en';
+  document.documentElement.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
+  document.getElementById('lang-toggle').textContent = currentLang === 'en' ? 'AR / العربية' : 'EN / English';
+  const t = i18n[currentLang];
+  document.getElementById('hero-title').textContent = t.heroTitle;
+  document.getElementById('hero-desc').textContent = t.heroDesc;
+  document.getElementById('pol-heading').textContent = t.polHeading;
+  document.getElementById('footer-text').textContent = t.footerText;
+}
+
+renderPolicies();
+</script>
+</body>
+</html>`;
+
+interface Env {
+  AIP_SIGNING_SECRET?: string;
+  AIP_ISSUER_KEY?: string;
+  UPSTREAM_URL?: string;
+}
+
+async function constantTimeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [da, db] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(a)),
+    crypto.subtle.digest("SHA-256", enc.encode(b)),
+  ]);
+  const ua = new Uint8Array(da);
+  const ub = new Uint8Array(db);
+  let diff = 0;
+  for (let i = 0; i < ua.length; i++) diff |= ua[i] ^ ub[i];
+  return diff === 0;
+}
+
+interface AipTokenClaims {
+  sub: string;
+  jti: string;
+  iat: number;
+  exp: number;
+  scopes: string[];
+}
+
+const TOKEN_PREFIX = "aip_tok_";
+const DEFAULT_SCOPES = ["pi:pay:read", "memory:recall", "intent:compile"];
+const ALLOWED_SCOPES = new Set([...DEFAULT_SCOPES, "email:send"]);
+
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function fromBase64Url(input: string): Uint8Array | null {
+  if (!/^[A-Za-z0-9_-]+$/.test(input)) return null;
+  const padded = input.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (input.length % 4)) % 4);
+  try {
+    const binary = atob(padded);
+    const out = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+async function importHmacKey(secret: string): Promise<CryptoKey> {
+  return crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"],
+  );
+}
+
+async function signAipToken(secret: string, claims: AipTokenClaims): Promise<string> {
+  const payload = toBase64Url(new TextEncoder().encode(JSON.stringify(claims)));
+  const key = await importHmacKey(secret);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+  return `${TOKEN_PREFIX}${payload}.${toBase64Url(new Uint8Array(sig))}`;
+}
+
+async function verifyAipToken(secret: string, rawToken: string): Promise<AipTokenClaims | null> {
+  if (!rawToken.startsWith(TOKEN_PREFIX)) return null;
+  const body = rawToken.slice(TOKEN_PREFIX.length);
+  const dotIdx = body.indexOf(".");
+  if (dotIdx <= 0) return null;
+  const payloadB64 = body.slice(0, dotIdx);
+  const sigB64 = body.slice(dotIdx + 1);
+  const sigBytes = fromBase64Url(sigB64);
+  const payloadBytes = fromBase64Url(payloadB64);
+  if (!sigBytes || !payloadBytes) return null;
+  const key = await importHmacKey(secret);
+  const ok = await crypto.subtle.verify("HMAC", key, sigBytes, new TextEncoder().encode(payloadB64));
+  if (!ok) return null;
+  try {
+    const claims = JSON.parse(new TextDecoder().decode(payloadBytes)) as AipTokenClaims;
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (!claims.sub || !Array.isArray(claims.scopes) || typeof claims.exp !== "number" || claims.exp <= nowSec) {
+      return null;
+    }
+    return claims;
+  } catch {
+    return null;
+  }
+}
+
+export default {
+  async fetch(request: Request, env?: Env): Promise<Response> {
+    const url = new URL(request.url);
+
+    if (url.pathname === "/health") {
+      return json({
+        name: SERVER_NAME,
+        version: VERSION,
+        status: "live",
+        signingConfigured: Boolean(env?.AIP_SIGNING_SECRET),
+        upstreamConfigured: Boolean(env?.UPSTREAM_URL),
+      });
+    }
+
+    if (url.pathname === "/" || url.pathname === "/console") {
+      return new Response(PAGE_HTML, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
+
+    // Token Issuance Endpoint (requires authenticated issuer key + AIP_SIGNING_SECRET)
+    if (url.pathname === "/v1/tokens/issue" && request.method === "POST") {
+      if (!env?.AIP_SIGNING_SECRET || !env?.AIP_ISSUER_KEY) {
+        return json({
+          error: "SERVICE_UNAVAILABLE",
+          message: "AIP_SIGNING_SECRET and AIP_ISSUER_KEY must be configured",
+        }, 503);
+      }
+      const authHeader = request.headers.get("authorization");
+      const providedKey = authHeader?.startsWith("Bearer ")
+        ? authHeader.slice(7).trim()
+        : request.headers.get("x-aip-issuer-key")?.trim() ?? "";
+      if (!providedKey || !(await constantTimeEqual(providedKey, env.AIP_ISSUER_KEY))) {
+        return json({ error: "UNAUTHORIZED", message: "Valid issuer credential required" }, 401);
+      }
+      const body = await request.json().catch(() => null) as { agentDid?: unknown; scopes?: unknown } | null;
+      const agentDid = typeof body?.agentDid === "string" && body.agentDid.trim()
+        ? body.agentDid.trim()
+        : "did:axiom:pi:agent";
+      const requestedScopes = Array.isArray(body?.scopes)
+        ? body.scopes.filter((s): s is string => typeof s === "string" && ALLOWED_SCOPES.has(s))
+        : [];
+      const scopes = requestedScopes.length > 0 ? requestedScopes : DEFAULT_SCOPES;
+      const nowSec = Math.floor(Date.now() / 1000);
+      const claims: AipTokenClaims = {
+        sub: agentDid,
+        jti: crypto.randomUUID(),
+        iat: nowSec,
+        exp: nowSec + 3600,
+        scopes,
+      };
+      const tokenId = await signAipToken(env.AIP_SIGNING_SECRET, claims);
+      return json({
+        status: "issued",
+        tokenId,
+        agentDid,
+        expiresInSeconds: 3600,
+        scopes,
+        issuedAt: new Date(nowSec * 1000).toISOString(),
+      });
+    }
+
+    // Proxied Execution Endpoint (verifies signed token and proxies to configured upstream)
+    if (url.pathname === "/v1/proxy/execute" && request.method === "POST") {
+      if (!env?.AIP_SIGNING_SECRET || !env?.UPSTREAM_URL) {
+        return json({
+          error: "SERVICE_UNAVAILABLE",
+          message: "AIP_SIGNING_SECRET and UPSTREAM_URL must be configured before proxying requests",
+        }, 503);
+      }
+      const authHeader = request.headers.get("authorization");
+      const rawToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+      const claims = rawToken ? await verifyAipToken(env.AIP_SIGNING_SECRET, rawToken) : null;
+      if (!claims) {
+        return json({ error: "UNAUTHORIZED", message: "Invalid or expired AIP Token" }, 401);
+      }
+      if (!claims.scopes.includes("intent:compile")) {
+        return json({ error: "FORBIDDEN", message: "Token lacks intent:compile scope" }, 403);
+      }
+
+      const body = await request.json().catch(() => null) as {
+        path?: unknown;
+        method?: unknown;
+        payload?: unknown;
+      } | null;
+      const targetPath = typeof body?.path === "string" ? body.path : "";
+      if (!targetPath.startsWith("/") || targetPath.startsWith("//") || targetPath.includes("..")) {
+        return json({ error: "BAD_REQUEST", message: "A safe relative upstream path starting with '/' is required" }, 400);
+      }
+
+      let baseOrigin: string;
+      let targetUrl: URL;
+      try {
+        const base = new URL(env.UPSTREAM_URL);
+        baseOrigin = base.origin;
+        targetUrl = new URL(targetPath, base);
+      } catch {
+        return json({ error: "BAD_GATEWAY", message: "Invalid UPSTREAM_URL configuration" }, 502);
+      }
+      if (targetUrl.origin !== baseOrigin) {
+        return json({ error: "BAD_REQUEST", message: "Cross-origin upstream override rejected" }, 400);
+      }
+
+      const method = typeof body?.method === "string" && ["GET", "POST"].includes(body.method.toUpperCase())
+        ? body.method.toUpperCase()
+        : "POST";
+      const upstreamRes = await fetch(targetUrl.toString(), {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          "X-AIP-Agent-DID": claims.sub,
+          "X-AIP-Token-ID": claims.jti,
+        },
+        body: method === "POST" ? JSON.stringify(body?.payload ?? {}) : undefined,
+      }).catch(() => null);
+
+      if (!upstreamRes) {
+        return json({ error: "BAD_GATEWAY", message: "Failed to reach upstream service" }, 502);
+      }
+      const responseText = await upstreamRes.text();
+      const isBodyless = [204, 205, 304].includes(upstreamRes.status);
+      return new Response(isBodyless ? null : responseText, {
+        status: upstreamRes.status,
+        headers: {
+          "Content-Type": upstreamRes.headers.get("content-type") || "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    return new Response("not found", { status: 404 });
+  },
+};
+
+function json(value: unknown, status = 200): Response {
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+  });
+}

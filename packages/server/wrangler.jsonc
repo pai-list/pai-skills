@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pi-skills-worker",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-06",
+  "routes": [
+    {
+      "pattern": "skills.axiomid.app/*",
+      "zone_name": "axiomid.app"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "MEMORY",
+      "id": "c525aab388054c57ba586bfcc907a795"
+    }
+  ]
+}

@@ -38,11 +38,6 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@pai/crypto": "^0.1.0",
-    "@pai/sdk": "^0.1.0",
-    "@pai/identity": "^0.1.0",
-    "@pai/verify": "^0.1.0",
-    "@pai/wallet": "^0.1.0",
     "fast-check": "^3.15.0",
     "zod": "^3.22.0"
   },

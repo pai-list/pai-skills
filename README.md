@@ -35,8 +35,12 @@ PAI Skills = The "App Store" for agent capabilities on Pi
 | **PAI Trust** | `@pai/identity` | Trust scoring via AxiomID TrustChain | ✅ Live |
 | **PAI Pay** | `@pai/payments` | Pi ↔ USDC payments via ACP | 🔧 Building |
 | **PAI Wallet** | `@pai/wallet` | Pi wallet management for agents | 🔧 Building |
-| **PAI DID Resolve** | `@pai/identity` | Resolve any `did:pai:*` | 🔧 Building |
+| **PAI Did Resolve** | `@pai/identity` | Resolve any `did:pai:*` | 🔧 Building |
 | **PAI Verify Proof** | `@pai/verify` | Verify an existing proof hash | 🔧 Building |
+| **PAI Onboard** | `@pai/skill-onboard` | 6-step entry loop: read → register → claim → apply → deliver | 🔨 New |
+| **PAI Marketplace** | `@pai/skill-marketplace` | The zero-cost labor market loop (compounding) | 🔨 New |
+| **PAI Earn Discovery** | `@pai/skill-discover-earn` | Honest earn-path scanner with anti-scam filter | 🔨 New |
+| **PAI Skill Writer** | `@pai/skill-writer` | The meta-skill: write earning skills for the Pi ecosystem (60M users) | 🔨 New |
 
 ## How to Add a Skill
 

@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pai-ppp-worker",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-06",
+  "routes": [
+    {
+      "pattern": "ppp.axiomid.app/*",
+      "zone_name": "axiomid.app"
+    }
+  ]
+}
